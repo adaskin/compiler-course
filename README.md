@@ -53,9 +53,10 @@ Weekly topics (you may see slight changes during the semester)
   * You will  step by step  design&write a compiler for a programming language you will define and study its correctness efficiency etc.
     * You can use C or Python 
     * or a functional programming language Haskel or OCaml 
-* 2 or 3 theoretical assignment
+* 2 or 3 theoretical assignments
 * Submissions through classroom.google.com & github.com
 * No late submission
+* Use of AI is permitted. You can use any AI tools for the assignments but you should acknowledge that in your assignment reports.
 
 ## **Grading**
 There will be a 1 midterm and a 1 final exam. 
@@ -63,7 +64,7 @@ There will be a 1 midterm and a 1 final exam.
 * 20% midterm (very similar to written assignments)
 * 10% written assignments
 * 30% programming projects
-* 40% final exam (very similar to written assignments and some generic questions related projects)
+* 40% final exam (very similar to written assignments and some generic questions related to projects)
 
 ## **Discussion**
 For the assignment submission/grading and discussions, we use classroom.google.com for this course.  In discussions and questions:
