@@ -9,9 +9,13 @@ int yylex(void);
 
 %union {
     double dval;
+    // char *sval;      /* for string values */
+    // int ival;        /* for integer values */
 }
 
-%token <dval> NUMBER
+%token <dval> NUMBER       /* NUMBER uses the dval field of the union */
+// %token <sval> STRING   /* STRING uses the sval field */
+// %token <ival> INT      /* INT uses the ival field */
 %token ADD SUB MUL DIV LPAREN RPAREN EOL
 
 %type <dval> expression term factor
