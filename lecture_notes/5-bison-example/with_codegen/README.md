@@ -96,6 +96,15 @@ The stack machine has:
 
 ### Execution of `2 + 3 * 4`
 
+```
+Bytecode: PUSH 2, PUSH 3, PUSH 4, MUL, ADD
+
+Step 0: PUSH 2 → Stack: [2]
+Step 1: PUSH 3 → Stack: [2, 3]  
+Step 2: PUSH 4 → Stack: [2, 3, 4]
+Step 3: MUL    → Stack: [2, 12]  (pop 3,4 → 3*4=12 → push 12)
+Step 4: ADD    → Stack: [14]     (pop 2,12 → 2+12=14 → push 14)
+```
 Let's trace through the execution:
 
 **Initial State:**
@@ -172,6 +181,7 @@ Step 1: PUSH 3 → Stack: [2, 3]
 Step 2: ADD    → Stack: [5]
 Step 3: PUSH 4 → Stack: [5, 4]
 Step 4: MUL    → Stack: [20]
+
 ```
 
 ## 6. Unary Operator Example
