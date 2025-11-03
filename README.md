@@ -36,14 +36,14 @@ Weekly topics (you may see slight changes during the semester)
 5. Syntax-Directed Translation
 6. Top-Down Parsing 
 7. Bottom-Up Parsing 
-8. Semantic Analysis 
-9. Type Checking 
-10. Run-time Environments
-11. Code Generation
-12. Operational Semantics
-13. Intermediate code representation
-14. Local Optimization & Global Optimization
-15. instruction scheduling & register allocation
+8. Semantic Analysis & Type Checking 
+9. Run-time Environments & Code Generation
+10. Operational Semantics  
+11. Intermediate code representation
+12. Local Optimization 
+13. Global Optimization
+14. instruction scheduling & register allocation
+15. **The AI Compiler Landscape (TVM, Autokernel, etc)** 
 
 
 ## **Homework-coding assignments**
