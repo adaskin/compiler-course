@@ -1,0 +1,9 @@
+int x;
+float y;
+bool flag;
+
+x = 10;
+y = 3.14;
+x = x + 5 * 2;
+y = y / 2.0;
+flag = true;
