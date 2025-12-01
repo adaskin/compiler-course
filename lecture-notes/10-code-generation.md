@@ -14,8 +14,17 @@ Semantic Checks       →    Runtime Efficiency
 
 ---
 
-## **Code Generation Strategies**
+## **Intermediate Representations**
+- Graphical IRs 
+  - syntax related trees: AST, Parse Tree
+  - Graphs: control-flow graph, dependency graph (DAG), call graph etc
+- Linear IRs
+  - stack machine code
+  - one address, two-address, three address code (t5 ← t4 - t3)
 
+---
+
+## **Code Generation Strategies**
 ### **Three Major Approaches**
 
 **1. Stack-Based (Interpreters/Virtual Machines)**
