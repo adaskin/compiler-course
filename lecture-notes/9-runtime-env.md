@@ -25,7 +25,7 @@ AST with Types       →    Executable Program
 
 ---
 
-## **Slide 2: From Static Analysis to Dynamic Execution**
+## **From Static Analysis to Dynamic Execution**
 
 ### **Static vs Dynamic World**
 
