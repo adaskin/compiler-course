@@ -38,6 +38,8 @@
 
 Building on your successful parser and AST from Project 2, you will now implement the **semantic analysis** and **code generation** phases of your compiler. 
 - This project goes from program structure (AST) to producing executable code.
+**- Feel free to change your programming language specifics you have used in project2.**
+  
 
 **Semantic Analysis:** Your compiler will verify that programs follow the language's semantic rules (type checking, scope rules, proper variable usage) that couldn't be captured by context-free grammar alone.
 
@@ -57,7 +59,9 @@ By completing this project, you will:
 ---
 
 ## **3. Project Requirements**
-
+**- Feel free to change your programming language specifics you have used in project2.**
+However, you should at least have the basic minimum here in project3 as required in project2
+ 
 ### **3.1 Semantic Analysis Phase**
 
 Your compiler must implement:
