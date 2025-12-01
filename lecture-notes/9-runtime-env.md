@@ -89,6 +89,7 @@ int main() {
     return a;
 }
 ```
+
 ---
 
 ### **Activation Record (Stack Frame) Contents:**
@@ -153,6 +154,7 @@ def factorial(n):
 
 result = factorial(3)
 ```
+*An activation tree shows the way control enters and leaves activations.*
 
 ---
 
@@ -168,6 +170,7 @@ Return 6: [main]                             # result = 6
 ```
 
 ---
+
 **Explicit Stack Activation Record Example**
 ```C
 // Example program showing explicit stack frames
@@ -175,19 +178,17 @@ int bar(int x, int y) {
     int z = x * y;      // Local variable
     return z + 1;
 }
-
 int foo(int a) {
     int b = a + 5;
     int c = bar(b, 3);  // Function call
     return c * 2;
 }
-
 int main() {
     int result = foo(10);
     return result;
 }
+
 ```
-**Stack Layout During bar(15, 3) Execution?**
 
 ---
 
@@ -216,6 +217,7 @@ High Address
 └─────────────────┘ ← Stack pointer
 Low Address
 ```
+
 ---
 
 ### **Key Stack Operations:**
@@ -313,7 +315,11 @@ Memory Layout:
 │   foo() frame   │
 │   main() frame  │
 └─────────────────┘
+```
 
+---
+
+```
 Heap Fragmentation Example:
 After free(block2) and malloc(300):
 ┌─────────────────┐
