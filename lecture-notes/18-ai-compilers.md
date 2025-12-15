@@ -1053,12 +1053,65 @@ The hardware dictates what optimizations are possible, and the compiler's job is
 
 #### Major Frameworks and Trends
 
-**Established Compilers:**
-1. **TVM (Apache)**: End-to-end compiler stack, supports many backends
-2. **XLA (Google)**: Just-In-Time compiler for TensorFlow/JAX
-3. **MLIR (LLVM)**: Reusable compiler infrastructure, dialect system
-4. **TensorRT (NVIDIA)**: High-performance inference optimizer
+**1. TVM (Apache TVM) - The End-to-End AI Compiler**
+- **Purpose**: Compile models from multiple frameworks (PyTorch, TensorFlow, ONNX) to diverse hardware
+- **Key Innovation**: AutoTVM - uses machine learning to automatically find optimal operator schedules
+- **Target Support**: CPU, GPU (CUDA, ROCm, Metal), TPU, FPGA, and custom accelerators
+- **Educational Value**: Implements the full compilation pipeline you're learning about
 
+---
+
+```
+Frontend Models
+(PyTorch, TF, ONNX, etc.)
+    ↓
+Relay IR (High-level)
+    ↓
+Graph Optimizations
+(Fusion, Constant folding, etc.)
+    ↓
+TIR (Tensor IR) - Loop-level
+    ↓
+AutoTVM / AutoScheduler
+(Finds optimal schedules)
+    ↓
+Hardware-Specific Codegen
+(LLVM, CUDA, Metal, Vulkan, etc.)
+    ↓
+Deployable Module
+(Runs on CPU/GPU/TPU/FPGA/etc.)
+```
+
+---
+
+**Key Components:**
+1. **Relay**: High-level IR for graph optimizations
+2. **TIR**: Low-level IR for loop transformations
+3. **AutoTVM**: Uses ML to find optimal operator implementations
+4. **Runtime**: Lightweight deployment across platforms
+   
+---
+
+
+
+**2. XLA (Accelerated Linear Algebra) - Google's Compiler**
+- **Primary Use**: JIT compilation for TensorFlow and JAX
+- **Specialization**: Excellent for TPU optimization
+- **Integration**: Built into TensorFlow, used automatically in many cases
+
+---
+
+**3. MLIR (Multi-Level Intermediate Representation)**
+- **Purpose**: Not a compiler itself, but infrastructure for building compilers
+- **Innovation**: "Dialect" system allows different abstraction levels (tensor ops, low-level loops, hardware ops)
+- **Used By**: Many newer compilers build on MLIR (like IREE for mobile, Circt for hardware)
+
+---
+
+**4. TensorRT - NVIDIA's Inference Optimizer**
+- **Focus**: Maximum performance on NVIDIA GPUs
+- **Features**: Layer fusion, precision calibration, kernel auto-tuning
+- **Limitation**: NVIDIA-only, inference-only
 
 ---
 
