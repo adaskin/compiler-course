@@ -1,94 +1,187 @@
-# compiler-course
-compiler course at istanbul medeniyet university
+# BIL 463 Compiler Design: From Foundations to AI Systems (Fall 2026)
 
-## **BIL 463 Compiler Design (Fall 2025)**
+**Lecture:** 9:30 on Tuesdays 
+**Instructor:** Ammar Daşkın
+**Semester:** Fall 2026
 
-Lecture: 15:30am on Mondays @501
+---
 
-You are expected to have prior C programming experience and sufficient knowledge of data structures and algorithms. I will assume that you have taken at least the following CS departmental courses. 
+## Course Overview
 
+This course is an undergraduate-level introduction to the design principles of compilers and interpreters, with a modern emphasis on how compiler technology powers today's AI systems. **Every AI system you will build is, at its core, a compiler pipeline** — from LLM tokenizers (lexical analysis) to grammar-guided generation (parsing), from computational graphs (IR) to GPU kernel generation (code generation), and from agent frameworks to compiler-style optimization passes.
 
-* MAT107 Discrete Math, 
-* BIL 121 C Programming, 
-* BIL 201 Data Structure and Intro to Algorithms, 
-* BIL206 Algorithm Design and Analysis 
+We will build a mini-compiler for a small language as a semester-long programming project, while weaving in modern AI applications at every stage. By the end of the course, you will understand not only how traditional compilers work, but also how the same concepts appear in PyTorch, TVM, MLIR, LLM tokenizers, and AI agent systems.
 
-This course is an undergraduate level introductory course on  the basic design principles of compilers and interpreters for general purpose programming languages. The topics include lexical analysis, syntax analysis, top down&bottom up parsers, code generation and optimization.   During the semester we will built a  mini  compiler for a modern language (such as Java) as parts of programming assignments. There will be also theoretical written assignments and exams based on math and algorithms. 
+### Why This Course Matters in 2026
 
+- **LLM tokenizers are lexers** — BPE/SentencePiece are lexer generators for natural language
+- **Structured output from LLMs is parsing** — Constrained decoding (Outlines, LMQL, JSON mode) is grammar-guided parsing
+- **Tensor shape checking is semantic analysis** — PyTorch shape errors are type errors
+- **Computational graphs are IRs** — ONNX, Relay IR, and MLIR are intermediate representations
+- **Agent frameworks are compiler pipelines** — Plan generation → optimization → tool execution mirrors IR → optimization → codegen
 
-## **Textbooks and Course Material**
+---
 
-* No required textbook. 
-* Lecture notes are based on 
-* Introduction to Compilers and Language Design, Douglas Thain, 2nd edition, 2020.  Free online textbook:  [https://www3.nd.edu/~dthain/compilerbook/](https://www3.nd.edu/~dthain/compilerbook/) 
-* [https://courses.cs.washington.edu/courses/cse401/22au/](https://courses.cs.washington.edu/courses/cse401/22au/) 
-* [https://web.stanford.edu/class/cs143/](https://web.stanford.edu/class/cs143/) 
-* Dragon Book: Compilers: Principles, Techniques, & Tools, Aho, Lam, Sethi & Ullman, A-W.
-* Engineering a Compiler, Cooper & Torczon.
-* lecture notes are mainly copied from these resources!
+## Prerequisites
 
-Weekly topics (you may see slight changes during the semester)
+You are expected to have prior C programming experience and sufficient knowledge of data structures and algorithms. I will assume you have taken at least the following courses:
 
-1. Admistriva & intro
-2. Lexical Analysis
-3. Implementation of Lexical Analysis
-4. Introduction to Parsing
-5. Syntax-Directed Translation
-6. Top-Down Parsing 
-7. Bottom-Up Parsing 
-8. Semantic Analysis & Type Checking 
-9. Run-time Environments & Code Generation
-10. Operational Semantics  
-11. Intermediate code representation
-12. Local Optimization 
-13. Global Optimization
-14. instruction scheduling & register allocation
-15. **The AI Compiler Landscape (TVM, Autokernel, etc)** 
+- MAT107 Discrete Math
+- BIL 121 C Programming
+- BIL 201 Data Structures and Intro to Algorithms
+- BIL 206 Algorithm Design and Analysis
 
+**No prior AI/ML background is required.** We will introduce tensor operations, computational graphs, and AI concepts as needed, always connecting them back to compiler ideas you already know.
 
-## **Homework-coding assignments**
+---
 
-* Assigned via classroom.google.com  
-* **3 or 4 programming projects**
-  * You will  step by step  design&write a compiler for a programming language you will define and study its correctness efficiency etc.
-    * You can use C or Python 
-    * or a functional programming language Haskel or OCaml 
-* 2 or 3 theoretical assignments
-* Submissions through classroom.google.com & github.com
-* No late submission
-* Use of AI is permitted. You can use any AI tools for the assignments but you should acknowledge that in your assignment reports.
+## Textbooks and Course Material
 
-## **Grading**
-There will be a 1 midterm and a 1 final exam. 
+No required textbook. Lecture notes are posted weekly on Classroom.
 
-* 20% midterm (very similar to written assignments)
-* 10% written assignments
-* 30% programming projects
-* 40% final exam (very similar to written assignments and some generic questions related to projects)
+**Primary references:**
+- *Introduction to Compilers and Language Design*, Douglas Thain, 2nd edition, 2020. [Free online](https://www3.nd.edu/~dthain/compilerbook/)
+- [Stanford CS143](https://web.stanford.edu/class/cs143/) — lecture notes heavily based on this
+- [UW CSE401](https://courses.cs.washington.edu/courses/cse401/22au/)
+- *Compilers: Principles, Techniques, & Tools* (Dragon Book), Aho, Lam, Sethi & Ullman
+- *Engineering a Compiler*, Cooper & Torczon, 3rd edition
 
-## **Discussion**
-For the assignment submission/grading and discussions, we use classroom.google.com for this course.  In discussions and questions:
+**AI compiler references (supplementary):**
+- Apache TVM documentation: [tvm.apache.org](https://tvm.apache.org/)
+- MLIR documentation: [mlir.llvm.org](https://mlir.llvm.org/)
+- *Engineering a Compiler for Machine Learning* (various survey papers, linked in lectures)
 
-* Do not post solutions or any significant part of an assignment.
-* Do not post anything not related to the course.
-* Ask a question when you would like some help with something
-* Post something when you would like to help others with something.
+---
 
-**Environment**
-You should have Linux installed machine/virtual-machine.  Then install flex and bison. Or related tools for the language used.
+## Weekly Schedule
 
-- sudo apt-get update 
-- sudo apt-get upgrade 
-- sudo apt-get install flex bison
+| Week | Topic | AI / Modern Angle |
+|------|-------|-------------------|
+| 1  | Administrivia & Introduction | **Why compilers = AI infrastructure.** Overview of the AI compilation pipeline. LLM tokenization as lexical analysis. |
+| 2  | Lexical Analysis I — Regular expressions, finite automata | LLM tokenizers (BPE, SentencePiece) as lexer generators. Why regex fails for natural language. |
+| 3  | Implementation of Lexical Analysis (Flex / PLY) | Hands-on: comparing a Flex lexer with a BPE tokenizer on the same input. |
+| 4  | Introduction to Parsing — CFGs, derivations | Grammar-guided LLM generation (Outlines, LMQL). "Making an LLM output valid JSON" is parsing. |
+| 5  | Top-Down Parsing (LL, recursive descent) | Parsing agent tool-call outputs. Structured extraction from LLM responses. |
+| 6  | Bottom-Up Parsing (LR, SLR, LALR) | Syntax-directed translation and its role in modern DSLs. |
+| 7  | Semantic Analysis & Type Checking | **Tensor shape checking as semantic analysis.** Real PyTorch shape errors mapped to type errors. Symbol tables for typed AI pipelines. |
+| 8  | Run-time Environments | **Agent runtime systems.** Memory management for context windows, tool execution sandboxes, conversation state. |
+| 9  | Code Generation | **Compiling for AI hardware.** GPU kernel generation, what TVM/XLA actually produce. LLMs as code generators. |
+| 10 | Intermediate Representations & Local Optimization | **Computational graphs as IR.** Operator fusion (Conv+BN+ReLU) as peephole optimization. |
+| 11 | Global Optimization | **ML for compiler optimization.** AutoTVM, learned heuristics, neural program synthesis. |
+| 12 | Instruction Scheduling & Register Allocation | **Tensor memory planning.** Activation checkpointing and memory-efficient attention as register allocation problems. |
+| 13 | AI Compilers Deep Dive | TVM, MLIR, XLA, TensorRT. The full AI compilation pipeline. |
+| 14 | Agents as Compiler Pipelines | The analogy: user query → tokenization → parsing → plan IR → optimization → tool execution → runtime. |
+| 15 | Project Presentations & Semester Summary | Modern trends, open problems, and where to go next. |
 
-There is also Windows exes (google it) or you  can try
+---
 
-* linux-distros through Windows subsytem for Linux [https://learn.microsoft.com/en-us/windows/wsl/](https://learn.microsoft.com/en-us/windows/wsl/)
-    * remember to install build-essential package
+## Homework & Programming Assignments
 
+### Programming Projects (30%)
+You will design and implement a compiler for a small language, in 3–4 incremental milestones. The project stops at code generation (no full optimization pass required), but you are encouraged to add **one AI-related extension** as a bonus:
 
-## **Collaboration and Cheating Policy**
+- **Milestone 1:** Lexer
+- **Milestone 2:** Parser + AST
+- **Milestone 3:** Semantic analysis & type checking
+- **Milestone 4:** IR + code generation
 
-* Any kind of plagiarism and cheating are prohibited (Please, refer to the university cheating policy).
-* If you benefit from some work of others, list them as references (online references or books) 
-* Discussing the assignments or projects with your friends is allowed; but, all the submitted work should be yours alone. List your collaborators (if you discuss your homework with your friends) in your assignments.
+**Suggested AI-flavored extensions (pick one, optional but encouraged):**
+1. Compile a tiny tensor DSL (e.g., `tensor C = matmul(A, B); relu(C);`) to fused NumPy or C.
+2. Build a mini "agent compiler" that takes a task DSL and produces an execution plan.
+3. Write a prompt optimizer that applies classic compiler passes (dead-code elimination, constant folding, fusion) to LLM prompts.
+4. Use an LLM to help write your compiler, then critically analyze where it succeeds and fails.
+
+You may work in groups of 2 or 3. Submissions through Classroom and GitHub. **No late submissions.**
+
+### Written Assignments (10%)
+2–3 theoretical assignments on automata, grammars, parsing tables, type systems. You may use AI tools, but you must acknowledge usage in your report.
+
+### Exams
+- **Midterm (20%):** Similar in style to written assignments.
+- **Final (40%):** Written assignments + conceptual questions related to your project and the AI/compilers connection.
+
+---
+
+## Grading Summary
+
+| Component | Weight |
+|-----------|--------|
+| Midterm | 20% |
+| Final exam | 40% |
+| Written assignments | 10% |
+| Programming projects | 30% |
+
+---
+
+## Implementation Paths for the Project
+
+You may choose one of three implementation paths — all build the same language, with different tools and trade-offs:
+
+- **Path A: C + Flex/Bison** — The classic approach. Understand everything from scratch.
+- **Path B: Python + PLY** — Rapid prototyping. Focus on concepts over systems details.
+- **Path C: OCaml + LLVM** — Industry-inspired. Leverage functional programming and a real optimization/codegen backend.
+
+All paths will teach you compiler design. The concepts are the same; only the implementation differs.
+
+---
+
+## Collaboration and Academic Integrity
+
+- Any kind of plagiarism and cheating is prohibited. Please refer to the university cheating policy.
+- Discussing assignments and projects with friends is allowed, but **all submitted work must be your own**.
+- If you benefit from work of others (including AI tools), list them as references.
+- **Use of AI tools (ChatGPT, Copilot, DeepSeek, etc.) is permitted** for assignments and projects, but you must acknowledge this in your reports and be prepared to explain every line you submit.
+
+---
+
+## Environment
+
+You should have a Linux machine or VM. Required tools depend on your chosen path:
+
+```bash
+# For Path A (C/Flex/Bison)
+sudo apt-get update && sudo apt-get upgrade
+sudo apt-get install build-essential flex bison
+
+# For Path B (Python/PLY)
+pip install ply
+
+# For Path C (OCaml/LLVM)
+# See OCaml and LLVM setup guides linked in lecture 1
+```
+
+Windows users can use [WSL](https://learn.microsoft.com/en-us/windows/wsl/).
+
+---
+
+## Discussions & Questions
+
+We use **Classroom (Google Classroom)** for assignment submission, grading, and discussions.
+
+- Do not post solutions or significant parts of an assignment.
+- Do not post anything unrelated to the course.
+- Ask when you need help; answer when you can help others.
+
+---
+
+## A Note on the Small Class
+
+With a small cohort this semester, we will run the course more like a **seminar + lab** than a large lecture. Expect:
+
+- More discussion and Q&A during lectures
+- Student-led paper presentations on AI compiler topics (TVM paper, MLIR, ReAct agents, etc.)
+- Hands-on GPU sessions when we cover AI compilers
+- Personalized feedback on projects
+
+If you are interested in compilers, AI infrastructure, or both — this course is built for you.
+
+---
+
+## Resources & Community
+
+- **Conferences:** PLDI, CGO, MLSys, LLVM Developers' Meeting
+- **Open-source projects to explore:** LLVM/Clang, Apache TVM, MLIR, ONNX Runtime, V8, Roslyn
+- **Communities:** CompilerDev Discord, `#llvm` on IRC, r/compilers
+
+---
+
