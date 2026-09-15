@@ -58,7 +58,7 @@ style: |
     border-left: 4px solid #dc3545;
     margin: 10px 0;
   }
-```
+---
 
 <!-- _class: lead -->
 
