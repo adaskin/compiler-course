@@ -25,7 +25,7 @@ The project is one continuous codebase delivered in **three phases**. Each phase
 
 **Teams:** groups of **2–3** (same rule as Project 1). A team of 1 is allowed with instructor approval. Every team member must be able to explain any part of the code in the presentation. Each report includes a one-paragraph contribution statement, and individual grades may be adjusted from it and from the git history.
 
-**Reuse:** you may start from your Project 1 lexer, your Project 2/3 code, and the lecture examples (`lecture-notes/5-bison-example`, `lecture-notes/8-semantic-analysis-type-checking`). You may change your language freely; it does not have to match anything you built earlier.
+**Reuse:** you may start from your Project 1 lexer and the lecture examples (`lecture-notes/5-bison-example`, `lecture-notes/8-semantic-analysis-type-checking`). You may change your language freely; it does not have to match anything you built earlier.
 
 ---
 
