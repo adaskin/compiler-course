@@ -54,6 +54,8 @@ AI tools are **permitted and encouraged**, as in Project 1. That includes using 
 | F6 | **Minimum language core:** `Int`, `Bool`, arithmetic and comparison, `let`, `if`, top-level function definitions with recursion, function calls, and a built-in `print_int(Int) -> Int` (prints the value and a newline, returns the value; this avoids needing a `Unit` type or IO monad). A `main() -> Int` function is the entry point; its result is the process exit code. |
 | F7 | One **feature track** from Section 2, declared by the end of Phase 1. |
 | F8 | The common **command-line interface** and **diagnostic format** below, so one script can test every team's compiler. |
+| F10 | **Fixed semantics** (so expected outputs are comparable across teams): `Int` is 32-bit signed and wraps on overflow; evaluation is strict, left-to-right, call-by-value (this matters because `print_int` has side effects); `&&` and `||` short-circuit; functions take all their arguments at once (**no partial application**, no currying); a lambda or function value may not capture local variables unless your track is C; integer division or remainder by zero must stop the program with a message on stderr and a nonzero exit code (never undefined behavior). |
+| F11 | A program with **any** lexical, syntax, or type error must exit nonzero and must never reach code generation. Error recovery exists only to report more errors; it must never turn an invalid program into an accepted one. |
 | F9 | Public GitHub repo, `README.md` with build instructions, a short `SPEC.md`, and a `tests/` directory. |
 
 **Command-line interface (fixed):**
@@ -305,6 +307,8 @@ Also required:
 - **Every emitted `.ll` in `tests/run/` passes `opt -verify`** (the test runner checks it).
 - At least **one "program of your own"** of 40+ lines (e.g., primes, fibonacci with an accumulator, a small list or tree algorithm for your track) that shows the language is actually usable.
 - Test names are descriptive (`type_if_branch_mismatch.fpl`, not `test7.fpl`).
+- **Independent expected outputs.** Expected outputs must be hand-computed or produced by a small reference interpreter over your AST (about 50 lines; strongly recommended), never copied from your own compiler's output. A test suite that only agrees with itself proves nothing.
+- At least **one runtime-error test**: division by zero is diagnosed with a nonzero exit.
 - **Robustness check:** truncating each valid test program at 5 random points (script it) must never crash the compiler; every run ends with a diagnostic or success.
 - The README documents how to run the tests and shows the pass count.
 
