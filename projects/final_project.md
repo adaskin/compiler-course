@@ -228,7 +228,7 @@ This is where the "humans and LLMs" theme comes alive. Include in your report:
 4. **Repair loop:** feed your compiler's error message back once. How many failures does the message fix?
 5. Based on what you saw, change one thing in your spec, grammar, or error messages. Re-measure.
 
-Your grade does **not** depend on a high success rate. It depends on honest measurement and a specific conclusion: what makes a language LLM-friendly?
+Think of your error messages as the interface an LLM agent works through: they are all it sees when it tries to repair a program. Your grade does **not** depend on a high success rate. It depends on honest measurement and a specific conclusion: what makes a language LLM-friendly?
 
 Also compare BPE token counts (`tiktoken`) of your example programs vs equivalent Python/OCaml.
 
@@ -290,6 +290,16 @@ Partial credit is given for incomplete phases — submit what works and document
 - **Tail-call elimination** (`musttail` or loop lowering)
 - **Machine-readable diagnostics** (`--diagnostics=json`)
 - Or propose your own
+
+### Tooling bonuses (ideas from the "AI coding agents and compiler tech" lecture)
+
+AI coding agents edit code as text because that is what is reliable, but compilers know how to do better when a tool needs to *understand* a program. Each bonus below is a small tool built on your own front end. Show it on a test where plain text tools (`sed`, line-based `diff`) fail.
+
+- **Scope-aware rename**: `./fplc prog.fpl --rename old:new` renames a function or variable using your symbol table. It must handle shadowing and leave comments alone. Show a program where `sed` gets it wrong.
+- **Lossless formatter**: `./fplc prog.fpl --fmt` prints the program back in canonical form, keeps comments, and is idempotent (`fmt(fmt(x)) == fmt(x)`). This is the "AST drops trivia" problem in practice.
+- **Definition hashes**: `./fplc prog.fpl --emit-hashes` prints a content hash of each definition's normalized AST. Renaming a parameter must not change the hash, and two alpha-equivalent definitions must share one (the idea behind Unison and value numbering).
+- **Next-token oracle**: `./fplc --next-tokens` reads a partial program and lists the tokens your grammar allows next. Use it to constrain an LLM's output in the Section 7 experiment and compare the compile rate with and without it (grammar-constrained decoding).
+- **Symbol-level edit tool**: `./fplc prog.fpl --replace-def name new_def.fpl` swaps one definition, and refuses to write the file if the result does not parse or type check.
 
 ---
 
