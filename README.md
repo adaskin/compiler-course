@@ -52,7 +52,6 @@ By the end of this course, a successful student will be able to:
 | 5 | Function effectively as a member or leader of a team engaged in activities appropriate to the program's discipline. |
 | 6 | Apply computer science theory and software development fundamentals to produce computing-based solutions. |
 
-> Outcome 6 is the CS-specific outcome. If the department uses its own numbering or a different mapping, update the "ABET SO" column; the outcome statements themselves do not need to change.
 
 ---
 
