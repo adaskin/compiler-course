@@ -22,6 +22,40 @@ We will build a mini-compiler for a small language as a semester-long programmin
 
 ---
 
+## Learning Outcomes
+
+Each outcome is written with a measurable verb at a stated level of **Bloom's taxonomy** (revised, Anderson & Krathwohl) and is mapped to the **ABET Computing Accreditation Commission (CAC) Student Outcomes** listed below. The midterm assesses LO1–LO6; the final exam and projects assess LO4–LO10.
+
+By the end of this course, a successful student will be able to:
+
+| # | Learning outcome (students will be able to...) | Bloom level | ABET SO | Assessed by |
+|---|------------------------------------------------|-------------|---------|-------------|
+| **LO1** | **Describe** the phases of a compiler (lexer, parser, semantic analyzer, IR/optimizer, code generator) and **relate** each phase to its counterpart in an AI system (e.g., an LLM tokenizer, grammar-constrained decoding, a computational graph). | Understand | 1 | Midterm, final |
+| **LO2** | **Construct** regular expressions, NFAs and DFAs for token specifications, and **convert** between them (RE → NFA → DFA). | Apply | 1, 6 | Midterm, written assignment 1, Project 1 |
+| **LO3** | **Apply** the maximal-munch and rule-priority disambiguation rules to **trace** a lexer's output, and **implement** a lexer with Flex or PLY. | Apply | 2, 6 | Midterm, Project 1 |
+| **LO4** | **Design** context-free grammars for a language, **derive** strings, **draw** parse trees, and **analyze** a grammar for ambiguity. | Analyze | 1, 6 | Midterm, written assignment 2, Project 2 |
+| **LO5** | **Construct** top-down parsers: **transform** grammars (left-recursion elimination, left factoring), **compute** FIRST/FOLLOW sets, **build** LL(1) tables, and **trace** predictive parsing. | Apply | 6 | Midterm, written assignment 2, Project 2 |
+| **LO6** | **Construct** bottom-up parsers: **build** LR(0) item sets and SLR tables, **trace** shift-reduce parses, and **diagnose** shift-reduce and reduce-reduce conflicts. | Apply / Analyze | 1, 6 | Midterm, written assignment 2, Project 2 |
+| **LO7** | **Analyze** a program with a symbol table and type rules to **detect** and **report** semantic errors (scope, type mismatch, tensor-shape mismatch). | Analyze | 1, 6 | Final, Project 3 |
+| **LO8** | **Generate** intermediate and target code, **explain** run-time environments (stack frames, calling conventions, memory management), and **evaluate** local/global optimizations and register allocation. | Apply / Evaluate | 2, 6 | Final, Project 4 |
+| **LO9** | **Design, implement, and test** a working compiler for a small language as a team, using version control and a documented test suite. | Create | 2, 5 | Projects 1-4, final project |
+| **LO10** | **Evaluate** modern AI compilers (TVM, MLIR, XLA) and AI-assisted development, **communicate** findings in a report or presentation, and **document** the responsible use of AI tools. | Evaluate | 3, 4 | Presentation, reports, final |
+
+### ABET Student Outcomes referenced above
+
+| SO | Student outcome (ABET CAC, 2019-20 onward) |
+|----|--------------------------------------------|
+| 1 | Analyze a complex computing problem and apply principles of computing and other relevant disciplines to identify solutions. |
+| 2 | Design, implement, and evaluate a computing-based solution to meet a given set of computing requirements in the context of the program's discipline. |
+| 3 | Communicate effectively in a variety of professional contexts. |
+| 4 | Recognize professional responsibilities and make informed judgments in computing practice based on legal and ethical principles. |
+| 5 | Function effectively as a member or leader of a team engaged in activities appropriate to the program's discipline. |
+| 6 | Apply computer science theory and software development fundamentals to produce computing-based solutions. |
+
+> Outcome 6 is the CS-specific outcome. If the department uses its own numbering or a different mapping, update the "ABET SO" column; the outcome statements themselves do not need to change.
+
+---
+
 ## Prerequisites
 
 You are expected to have prior C programming experience and sufficient knowledge of data structures and algorithms. I will assume you have taken at least the following courses:
@@ -97,7 +131,7 @@ You may work in groups of 2 or 3. Submissions through Classroom and GitHub. **No
 2–3 theoretical assignments on automata, grammars, parsing tables, type systems. You may use AI tools, but you must acknowledge usage in your report.
 
 ### Exams
-- **Midterm (20%):** Similar in style to written assignments.
+- **Midterm (20%):** Similar in style to written assignments. Covers Weeks 1-7 (lexical analysis through bottom-up parsing). One section per learning outcome (LO1-LO6).
 - **Final (40%):** Written assignments + conceptual questions related to your project and the AI/compilers connection.
 
 ---
