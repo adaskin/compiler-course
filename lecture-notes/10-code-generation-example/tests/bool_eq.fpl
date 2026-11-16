@@ -1,0 +1,2 @@
+let a = print_bool ((1 < 2) == (3 > 4)) in
+print_bool (1 != 2 && true != false)

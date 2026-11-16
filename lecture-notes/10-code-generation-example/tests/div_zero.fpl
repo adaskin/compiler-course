@@ -1,0 +1,4 @@
+let d (a: int) (b: int): int = a / b
+
+let first = print_int (d 7 2) in
+print_int (d 7 0)

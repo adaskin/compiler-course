@@ -1,0 +1,7 @@
+let say (x: int): bool =
+  let u = print_int x in true
+
+let a = print_bool (false && say 1) in
+let b = print_bool (true || say 2) in
+let c = print_bool (true && say 3) in
+print_bool (false || say 4)

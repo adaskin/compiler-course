@@ -1,27 +1,32 @@
---
+## **Runtime Environments: Connecting the Front End to the Back End**
 
-##  **Runtime Environments - Connecting Frontend to Backend**
+BIL 463 Compiler Design · Week 9
 
-### **Where We Are in the Compiler Pipeline**
+### **Where We Are in the Compiler**
 
 ```
-Frontend:                    Backend:
-Source Code                 Intermediate Code
-    ↓                            ↓
-Lexical Analysis    →    Runtime Environment Design
-    ↓                            ↓
-Parsing              →    Code Generation
-    ↓                            ↓
-Semantic Analysis    →    Optimization & Target Code
-    ↓                            ↓
-AST with Types       →    Executable Program
+Source -> Lexer -> Parser -> AST -> Semantic analysis -> IR -> Code generation -> Executable
+                                    (types, scopes)             ^
+                                                                |
+                                     Runtime environment: the contract the generated code runs under
 ```
 
----
+- Last week: **what** the program means (types, scopes, symbol tables).
+- This week: **how** a running program is laid out in memory: frames, calling conventions, heap.
+- Next week: code generation, which has to follow the rules of this week.
 
+### **The Big Question**
 
-### **The Big Question:**
-**"Now that we understand the program's structure and types, how do we actually make it run?"**
+**"Now that we know the program is well typed, what happens in memory when it actually runs?"**
+
+By the end of this lecture you can
+
+- draw the memory layout of a process and say what lives where
+- draw an activation record (stack frame) **in the right order** and trace a call chain
+- explain calling conventions on x86-64, ARM64, RISC-V and MIPS
+- explain why recursion uses stack space, and what a **tail call** changes
+- compare manual, ownership-based, reference-counted and garbage-collected memory management
+- connect all of this to your final project (LLVM IR) and to AI runtimes
 
 ---
 
@@ -29,464 +34,58 @@ AST with Types       →    Executable Program
 
 ### **Static vs Dynamic World**
 
-| Static (Compile-time) | Dynamic (Runtime) |
+| Static (compile time) | Dynamic (run time) |
 |---------------------|------------------|
-| AST Structure | Activation Records |
-| Type Information | Memory Layout |
-| Symbol Tables | Stack Frames |
-| Scope Rules | Procedure Calls |
-| **Known at compile time** | **Determined during execution** |
+| AST structure | Activation records |
+| Types | Object and value layout in memory |
+| Symbol tables | Stack frames and register contents |
+| Scope rules | Procedure calls and returns |
+| **Known before the program runs** | **Determined while it runs** |
+
+### **Key Insight**
+
+The runtime environment bridges the compiler's **static knowledge** (a name `x` of type `int` in scope) and **dynamic execution** (a 4-byte slot at some offset from the frame pointer).
+
+> Week 8 built an environment that maps **names to types**. Code generation builds an environment that maps **names to locations**. Same scoping rules, different payload.
 
 ---
 
-### **Key Insight:**
-The runtime environment bridges our **static understanding** of the program with **dynamic execution**.
+## **Memory Layout: The Program's Home**
 
----
-
-## **Memory Layout - The Program's Home**
-
-### **Traditional Memory Organization**
+### **Traditional Process Memory (Linux, x86-64)**
 
 ```
-Low Address
-┌─────────────────┐
-│      Code       │  ← Program instructions (read-only)
-├─────────────────┤
-│   Static Data   │  ← Global variables, constants
-├─────────────────┤
-│       ↓         │
-│      Heap       │  ← Dynamic memory allocation
-│       ↑         │
-├─────────────────┤
-│       ↓         │
-│     Stack       │  ← Function calls, local variables
-└─────────────────┘
-High Address
+High addresses
+┌───────────────────────┐
+│        Stack          │  function calls, locals; grows DOWN
+│          |            │
+│          v            │
+│                       │
+│          ^            │
+│          |            │
+│        Heap           │  dynamic allocation; grows UP (malloc, new)
+├───────────────────────┤
+│  Static data (.data,  │  globals, constants
+│  .bss)                │
+├───────────────────────┤
+│  Code (.text)         │  machine instructions, read-only
+└───────────────────────┘
+Low addresses
 ```
 
+(Real processes also map shared libraries, thread stacks and memory-mapped files in the gap.)
+
+### **Modern Reality**
+
+- **Virtual memory:** every process sees its own address space; the OS and hardware map pages to RAM.
+- **Multiple threads = multiple stacks.** Each thread has its own stack (about 8 MB by default on Linux for the main thread).
+- **Security hardening:** ASLR (randomized addresses), non-executable stack (W^X), stack canaries, and hardware shadow stacks (for example Intel CET) that keep a second copy of return addresses.
+
 ---
 
-### **Modern Reality:**
-- Virtual memory makes this more flexible
-- Multiple threads = multiple stacks
-- Security considerations (stack guards, ASLR)
-
----
-
-## **Activation Records - The Heart of Execution**
+## **Activation Records: The Heart of Execution**
 
 ### **What Happens When You Call a Function?**
-
-```c
-int calculate(int x, int y) {
-    int result = x * y;
-    return result + 10;
-}
-
-int main() {
-    int a = calculate(5, 3);
-    return a;
-}
-```
-
----
-
-### **Activation Record (Stack Frame) Contents:**
-
-| Component | Purpose | Example |
-|-----------|---------|---------|
-| **Return Address** | Where to continue after function | `main+0x15` |
-| **Parameters** | Function arguments | `x=5, y=3` |
-| **Local Variables** | Function-scoped data | `result=15` |
-| **Temporary Storage** | Intermediate calculations | `(none)` |
-| **Control Link** | Caller's frame pointer | `→ main's frame` |
-
----
-
-
-## **Modern Activation Record Design**
-
-### **Traditional vs Modern Approaches**
-
-**Traditional C-style:**
-```c
-// Stack grows downward
-┌─────────────────┐
-│     Locals      │ ← Frame pointer
-├─────────────────┤
-│  Return Address │
-├─────────────────┤
-│   Parameters    │
-├─────────────────┤
-│  Control Link   │ ← Stack pointer
-└─────────────────┘
-```
-
----
-
-**Modern Optimized (x86-64):**
-```assembly
-; Parameters in registers when possible
-; Smaller frames, more register usage
-calculate:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 16          ; Space for locals
-    mov [rbp-4], edi     ; Save param1
-    mov [rbp-8], esi     ; Save param2
-    ; ... computation ...
-    leave
-    ret
-```
-
----
-
-## **The Stack in Action - Live Example**
-
-### **Tracing Execution**
-
-```python
-def factorial(n):
-    if n <= 1:
-        return 1
-    return n * factorial(n - 1)
-
-result = factorial(3)
-```
-*An activation tree shows the way control enters and leaves activations.*
-
----
-
-### **Stack Growth:**
-```
-Initial: [main]
-Call factorial(3): [main, factorial(3)]
-Call factorial(2): [main, factorial(3), factorial(2)]
-Call factorial(1): [main, factorial(3), factorial(2), factorial(1)]
-Return 1: [main, factorial(3), factorial(2)]  # 2 * 1 = 2
-Return 2: [main, factorial(3)]               # 3 * 2 = 6
-Return 6: [main]                             # result = 6
-```
-
----
-
-**Explicit Stack Activation Record Example**
-```C
-// Example program showing explicit stack frames
-int bar(int x, int y) {
-    int z = x * y;      // Local variable
-    return z + 1;
-}
-int foo(int a) {
-    int b = a + 5;
-    int c = bar(b, 3);  // Function call
-    return c * 2;
-}
-int main() {
-    int result = foo(10);
-    return result;
-}
-
-```
-
----
-
-**Stack Layout During bar(15, 3) Execution?**
-```text
-High Address
-┌─────────────────┐
-│    main frame   │
-│   ───────────   │
-│   result: ?     │ ← Frame pointer for main
-├─────────────────┤ ← Stack grows downward
-│    foo frame    │
-│   ───────────   │
-│   a: 10         │
-│   b: 15         │
-│   c: ?          │
-│   ret addr: main+0x20  │
-├─────────────────┤
-│    bar frame    │ ← Current frame pointer
-│   ───────────   │
-│   x: 15         │ ← Parameters passed by value
-│   y: 3          │
-│   z: 45         │ ← Local variable
-│   ret addr: foo+0x15   │
-│   saved fp: →foo frame │ ← Control link
-└─────────────────┘ ← Stack pointer
-Low Address
-```
-
----
-
-### **Key Stack Operations:**
-1. **Call `foo(10)`**: Push return address, push parameters
-2. **Call `bar(15, 3)`**: Save current FP, push new frame
-3. **Return from `bar`**: Store result, pop frame, restore FP
-4. **Return from `foo`**: Same process
-
----
-
-## **Heap Management - Beyond the Stack**
-
-### **When Stack Allocation Isn't Enough**
-
-```java
-class Node {
-    int value;
-    Node next;
-    
-    Node(int v) { 
-        value = v; 
-        next = null;
-    }
-}
-
-// These must live on the heap!
-Node head = new Node(1);
-head.next = new Node(2);
-```
-**Dynamic data structures are not supported in stack allocation**
-
----
-
-### **Dynamic vs Stack Allocation**
-
-```c
-// Stack allocation (compile-time known size)
-void stack_example() {
-    int local_array[100];     // On stack - auto freed
-    local_array[0] = 42;
-    // Array automatically freed when function returns
-}
-
-// Heap allocation (runtime determined size)
-void heap_example(int size) {
-    // Allocate on heap - persists until explicitly freed
-    int* dynamic_array = (int*)malloc(size * sizeof(int));
-    
-    if (dynamic_array != NULL) {
-        dynamic_array[0] = 42;
-        // ... use the array ...
-        free(dynamic_array);  // MUST free manually!
-    }
-}
-
-// Common bug: memory leak
-void memory_leak() {
-    int* data = malloc(1000);
-    data[0] = 5;
-    // OOPS! Forgot to free(data) - memory leak!
-    // The 1000 bytes are lost until program ends
-}
-
-// Dangling pointer bug
-void dangling_pointer() {
-    int* ptr = malloc(sizeof(int));
-    *ptr = 10;
-    free(ptr);        // Memory freed
-    *ptr = 20;        // ERROR: writing to freed memory!
-}
-```
-
----
-
-### **Heap Management Visualization:**
-
-```
-Memory Layout:
-┌─────────────────┐
-│      Code       │
-├─────────────────┤
-│   Static Data   │
-├─────────────────┤
-│                 │
-│      Heap       │ ← Dynamic allocations grow upward
-│   ───────────   │
-│   [block1: 100B]│ ← malloc(100)
-│   [free space]  │
-│   [block2: 200B]│ ← malloc(200)
-│   [block3: 50B] │ ← malloc(50)
-│                 │
-├─────────────────┤
-│     Stack       │ ← Function frames grow downward
-│   ───────────   │
-│   foo() frame   │
-│   main() frame  │
-└─────────────────┘
-```
-
----
-
-```
-Heap Fragmentation Example:
-After free(block2) and malloc(300):
-┌─────────────────┐
-│   [block1: 100B]│
-│   [FREE: 200B]  │ ← Cannot use for 300B allocation!
-│   [block3: 50B] │
-└─────────────────┘
-→ Need to search for larger contiguous space
-```
-
----
-
-### **Heap Allocation Strategies:**
-
-| Strategy | Pros | Cons | Used By |
-|----------|------|------|---------|
-| **Manual (malloc/free)** | Control, performance | Memory leaks, dangling pointers | C, C++ |
-| **Garbage Collection** | Safety, productivity | Overhead, pauses | Java, Python, Go |
-| **Automatic Reference Counting** | Predictable | Cyclic references | Swift, Objective-C |
-| **Region-based** | Fast deallocation | Complex programming model | Rust (arenas) |
-
----
-
-### **Heap vs Stack Trade-offs:**
-
-| Aspect | Stack | Heap |
-|--------|-------|------|
-| **Allocation Speed** | Very fast (just move SP) | Slower (search + bookkeeping) |
-| **Deallocation** | Automatic (function return) | Manual (free) or GC |
-| **Lifetime** | Function scope | Until explicitly freed |
-| **Size** | Limited (usually 1-8MB) | Large (limited by OS) |
-| **Fragmentation** | None | Can occur |
-| **Safety** | Automatic bounds checking | Manual management required |
-
----
-
-## **Modern Memory Management Trends**
-
-### **Zero-Cost Abstractions & Safety**
-
-**Rust's Ownership System:**
-```rust
-fn process_data() {
-    let data = vec![1, 2, 3];  // Allocated on heap
-    let processed = transform(data);  // Ownership transferred
-    // data is no longer accessible here
-    println!("{:?}", processed);
-}  // Memory automatically freed
-
-fn transform(mut vec: Vec<i32>) -> Vec<i32> {
-    vec.push(4);
-    vec  // Ownership returned
-}
-```
-
-### **Key Innovations:**
-- **Compile-time memory management** (Rust)
-- **Escape analysis** (Java, Go)
-- **Generational garbage collectors** (most modern VMs)
-- **Memory compression** (V8, .NET)
-
----
-
-## **Project Implications - Runtime Choices**
-
-### **How Your Compiler Design Affects Runtime**
-
-**C/Flex/Bison Path:**
-```c
-// Manual stack management
-void execute_function(Frame* frame) {
-    // Explicit stack operations
-    push_frame(frame);
-    // ... execute ...
-    pop_frame();
-}
-```
----
-
-**Python/PLY Path:**
-```python
-# Interpreter-based runtime
-class VirtualMachine:
-    def __init__(self):
-        self.call_stack = []
-        self.heap = {}
-    
-    def call_function(self, func, args):
-        frame = Frame(func, args)
-        self.call_stack.append(frame)
-        result = self.execute_frame(frame)
-        self.call_stack.pop()
-        return result
-```
----
-
-**OCaml/LLVM Path:**
-```ocaml
-(* LLVM handles runtime details *)
-let compile_function name params body =
-  let fn = define_function name (function_type i32_type params) the_module in
-  let builder = builder_at_end context (entry_block fn) in
-  (* LLVM generates optimal stack/heap code *)
-```
-
----
-
-## **Real-World Runtime Examples**
-
-### **Different Languages, Different Strategies**
-
-**JavaScript (V8 Engine):**
-- **Hidden classes** for fast property access
-- **Inline caching** for method calls
-- **Turbofan compiler** with escape analysis
-
----
-
-**Java (JVM):**
-- **Precise garbage collection** with generations
-- **JIT compilation** with profile-guided optimization
-- **Escape analysis** for stack allocation
-
----
-
-**Go:**
-- **Goroutine stacks** that grow dynamically
-- **Concurrent garbage collection**
-- **Value types** to reduce heap pressure
----
-
-**WebAssembly:**
-- **Linear memory** model
-- **Sandboxed execution**
-- **Deterministic performance**
-
----
-
-## **Connecting Back to Semantic Analysis**
-
-### **How Types Influence Runtime**
-
-```java
-// Semantic analysis tells us:
-class Point {
-    int x, y;        // Each Point: 8 bytes
-    Point next;      // Reference: 4/8 bytes
-}
-
-// Runtime implications:
-Point p = new Point(); 
-// Heap allocation: object header + 8 bytes + reference
-// Stack: reference variable (4/8 bytes)
-```
----
-
-### **Type-Driven Optimizations:**
-- **Stack allocation** for value types
-- **Memory layout** optimization
-- **Virtual method table** design
-- **Array bounds check** elimination
-
----
-
-## **Practical Exercise - Stack Tracing**
-
-### **Trace This Program's Execution**
 
 ```c
 int multiply(int a, int b) {
@@ -494,240 +93,609 @@ int multiply(int a, int b) {
     return result;
 }
 
-int calculate() {
+int calculate(void) {
     int x = 5;
     int y = multiply(x, 3);
     return y + 1;
 }
 
-int main() {
+int main(void) {
     int final = calculate();
     return final;
 }
 ```
 
----
+Every call needs a place for: the **arguments**, the **return address**, the **caller's frame pointer** (so the caller can continue), the **locals**, and **temporaries**. That block of memory is the **activation record** (stack frame). It is created on call and destroyed on return, so calls and returns nest like parentheses: a **stack**.
 
-### **Draw the Stack Frames:**
-1. **main()** calls **calculate()**
-2. **calculate()** calls **multiply(5, 3)**
-3. **multiply()** returns to **calculate()**
-4. **calculate()** returns to **main()**
+### **The Contents of a Frame**
 
-**Question:** What's in each activation record?
+| Component | Purpose | Example |
+|-----------|---------|---------|
+| **Arguments** | Values passed by the caller (registers first, extra ones on the stack) | `a=5, b=3` |
+| **Return address** | Where to continue in the caller | an address inside `calculate` |
+| **Control link** (saved frame pointer) | The caller's frame, so it can be restored | the caller's `rbp` |
+| **Locals and spills** | Variables and values that did not fit in registers | `result` |
+| **Temporaries** | Intermediate results of expressions | `a * b` before it is stored |
 
----
+### **A Frame, Drawn Correctly**
 
-### **Execution Trace & Stack Frames:**
+The stack grows toward **lower** addresses. The caller's data is **above** (higher), the callee's data is **below**:
 
-
-#### **Step 1: main() calls calculate()**
 ```
-Stack after main() calls calculate():
-┌─────────────────┐
-│    main frame   │
-│   ───────────   │
-│   final: ?      │
-│   ret addr: OS  │
-│   saved fp: OS  │
-├─────────────────┤
-│ calculate frame │ ← Current FP
-│   ───────────   │
-│   x: ?          │
-│   y: ?          │
-│   ret addr: main+0x10 │
-│   saved fp: →main│
-└─────────────────┘ ← SP
-```
-
----
-
-#### **Step 2: calculate() sets x = 5 and calls multiply(5, 3)**
-```
-Stack during multiply(5, 3) execution:
-┌─────────────────┐
-│    main frame   │
-│   ───────────   │
-│   final: ?      │
-├─────────────────┤
-│ calculate frame │
-│   ───────────   │
-│   x: 5          │
-│   y: ?          │
-│   ret addr: main+0x10│
-│   saved fp: →main│
-├─────────────────┤
-│ multiply frame  │ ← Current FP
-│   ───────────   │
-│   a: 5          │ ← Parameter (value = 5)
-│   b: 3          │ ← Parameter (value = 3)
-│   result: ?     │ ← Local variable
-│   ret addr: calculate+0x15│
-│   saved fp: →calculate│
-└─────────────────┘ ← SP
+High address
+┌──────────────────────────┐
+│ arguments passed on the  │  (only those that did not fit in registers)
+│ stack, pushed by caller  │
+├──────────────────────────┤
+│ return address           │  pushed by the `call` instruction
+├──────────────────────────┤
+│ saved frame pointer      │  <- FP points here (control link)
+├──────────────────────────┤
+│ locals and spilled regs  │  FP - 4, FP - 8, ...
+├──────────────────────────┤
+│ temporaries              │  <- SP points here (top of stack)
+└──────────────────────────┘
+Low address
 ```
 
----
-
-#### **Step 3: multiply() computes result = 15 and returns**
-- **multiply frame**: `result = 5 * 3 = 15`
-- Return value 15 is placed in return value register (e.g., EAX in x86)
-- Frame popped, SP moves up, FP restored to calculate frame
+Order, from high to low address: **arguments, return address, saved FP, locals, temporaries.** Locals sit at **negative** offsets from FP, arguments passed on the stack at **positive** offsets.
 
 ---
 
-#### **Step 4: Back in calculate(), y = 15, then returns y + 1 = 16**
-```
-Stack after multiply returns:
-┌─────────────────┐
-│    main frame   │
-│   ───────────   │
-│   final: ?      │
-├─────────────────┤
-│ calculate frame │ ← Current FP
-│   ───────────   │
-│   x: 5          │
-│   y: 15         │ ← Return value stored here
-│   ret addr: main+0x10│
-│   saved fp: →main│
-└─────────────────┘ ← SP
-```
-- calculate() computes: `y + 1 = 15 + 1 = 16`
-- Return value 16 placed in return register
-- Frame popped, SP moves up, FP restored to main frame
+## **A Real Frame: x86-64 and gcc**
 
----
+### **Same Function, Two Optimization Levels**
 
-#### **Step 5: Back in main(), final = 16, then returns**
-```
-Stack after calculate returns:
-┌─────────────────┐
-│    main frame   │ ← Current FP
-│   ───────────   │
-│   final: 16     │ ← Return value stored here
-│   ret addr: OS  │
-│   saved fp: OS  │
-└─────────────────┘ ← SP
-```
-
----
-
-### **Complete Activation Record Contents:**
-
-| Function | Frame Contents |
-|----------|----------------|
-| **multiply** | - Parameters: `a=5`, `b=3`<br>- Local: `result=15`<br>- Return address: `calculate+0x15`<br>- Control link: →calculate frame |
-| **calculate** | - Locals: `x=5`, `y=15`<br>- Return address: `main+0x10`<br>- Control link: →main frame |
-| **main** | - Local: `final=16`<br>- Return address: OS (caller)<br>- Control link: OS frame |
-
----
-
-### **Memory Addresses (Hypothetical 32-bit):**
-```
-Stack grows downward (high → low addresses):
-
-0xFFFFF000: main frame starts
-   final @ 0xFFFFF000
-   ret addr @ 0xFFFFF004
-   saved fp @ 0xFFFFF008
-
-0xFFFFEF00: calculate frame starts (when called)
-   x @ 0xFFFFEF00
-   y @ 0xFFFFEF04
-   ret addr @ 0xFFFFEF08
-   saved fp @ 0xFFFFEF0C (points to 0xFFFFF000)
-
-0xFFFFEE00: multiply frame starts (when called)
-   a @ 0xFFFFEE00
-   b @ 0xFFFFEE04
-   result @ 0xFFFFEE08
-   ret addr @ 0xFFFFEE0C
-   saved fp @ 0xFFFFEE10 (points to 0xFFFFEF00)
-```
-
----
-
-### **Key Observations:**
-1. **Parameter passing**: By value, so copies of `x` and `3` are made in `multiply`'s frame
-2. **Return values**: Typically passed in registers, not on stack
-3. **Frame pointers**: Each frame points to previous frame for easy unwinding
-4. **Stack cleanup**: Caller or callee responsibility depends on calling convention
-
----
-
-### **Common Calling Conventions:**
-- **cdecl (C)**: Caller cleans stack, parameters pushed right-to-left
-- **stdcall (Windows API)**: Callee cleans stack
-- **fastcall**: First few parameters in registers
-
----
-
-## **Modern Challenges & Solutions**
-
-### **Contemporary Runtime Issues**
-
-**1. Concurrency:**
-```go
-func processConcurrently() {
-    var wg sync.WaitGroup
-    for i := 0; i < 10; i++ {
-        wg.Add(1)
-        go func(id int) {
-            defer wg.Done()
-            processItem(id)  // Each goroutine needs its own stack
-        }(i)
-    }
-    wg.Wait()
+```c
+int calculate(int x, int y) {
+    int result = x * y;
+    return result + 10;
 }
 ```
+
+`gcc -O0 -S -masm=intel` (gcc 13, Linux, simplified):
+
+```asm
+calculate:
+    push rbp               ; save the caller's frame pointer
+    mov  rbp, rsp          ; the new frame pointer
+    mov  DWORD PTR -20[rbp], edi   ; x arrives in edi: spill it
+    mov  DWORD PTR -24[rbp], esi   ; y arrives in esi: spill it
+    mov  eax, DWORD PTR -20[rbp]
+    imul eax, DWORD PTR -24[rbp]
+    mov  DWORD PTR -4[rbp], eax    ; result lives at rbp-4
+    mov  eax, DWORD PTR -4[rbp]
+    add  eax, 10
+    pop  rbp
+    ret                    ; return value is in eax
+```
+
+`gcc -O2`:
+
+```asm
+calculate:
+    imul edi, esi          ; no frame at all
+    lea  eax, 10[rdi]      ; result in eax
+    ret
+```
+
+**A frame is an implementation choice, not a law.** With optimization the compiler keeps everything in registers, and `main` calling `calculate(5, 3)` is even folded to the constant 25. Try it yourself on https://godbolt.org.
+
+> The locals are at **negative** offsets from `rbp`, below the saved `rbp` and return address. Registers `edi` and `esi` are the first two argument registers of the System V ABI (Linux, macOS). Windows uses different ones (next slides).
+
+### **Frame Pointers Are Back**
+
+For years compilers omitted the frame pointer (`-fomit-frame-pointer`) to free one register. Recent Fedora and Ubuntu 24.04 LTS **enable frame pointers by default again**, because profilers and tracers walk the chain of saved frame pointers to build stack traces. A runtime design choice driven by tooling.
+
 ---
 
-**2. Memory Safety:**
-- **Bounds checking** (Rust, Go)
-- **Use-after-free detection** (AddressSanitizer)
-- **Stack overflow protection** (stack guards)
+## **Calling Conventions (ABIs)**
 
-**3. Performance:**
-- **JIT compilation** with adaptive optimization
-- **Ahead-of-time compilation** for predictable performance
-- **Profile-guided optimization**
+### **Who Puts the Arguments Where?**
+
+A **calling convention** is the agreement between caller and callee: which registers hold arguments, who saves which registers, who cleans the stack. Compilers, libraries and the OS must all agree; this is part of the **ABI**.
+
+| Platform | Integer arguments | Return value | Notes |
+|----------|-------------------|--------------|-------|
+| **x86-64 System V** (Linux, macOS) | `rdi, rsi, rdx, rcx, r8, r9`, then stack | `rax` | 128-byte red zone below `rsp` for leaf functions |
+| **x86-64 Windows** | `rcx, rdx, r8, r9`, then stack | `rax` | caller reserves **shadow space** for the four register arguments |
+| **ARM64 (AAPCS64)** (Apple Silicon, Graviton, phones) | `x0` to `x7`, then stack | `x0` | frame pointer `x29`, link register `x30` |
+| **RISC-V** | `a0` to `a7`, then stack | `a0` | return address in `ra` |
+| **MIPS o32** (our code generation examples) | `$a0` to `$a3`, then stack | `$v0, $v1` | return address in `$ra` |
+
+- Extra arguments go on the stack; so does anything bigger than the registers.
+- **Caller-saved** registers may be overwritten by the callee; **callee-saved** ones must be restored.
+- 32-bit x86 `cdecl` (arguments pushed right to left, caller cleans up) and `stdcall` are history; you meet them in old code and textbooks.
+
+### **Why You Care in This Course**
+
+Your compiler (final project) emits LLVM IR with plain `call i32 @f(i32 %x)`. **LLVM chooses the registers and builds the frame for each target** (x86-64, ARM64, RISC-V) following the platform ABI. You do not write prologues, but you need to understand what is being generated and why a call is not free.
+
+---
+
+## **The Stack in Action: Tracing Calls**
+
+### **Trace the Program**
+
+`main` calls `calculate`, which calls `multiply(5, 3)`. The state while `multiply` is running (x86-64, `-O0`, simplified; locals shown at the offsets gcc really used):
+
+```
+High address
+┌──────────────────────────────────────┐
+│ main frame                           │
+│   return addr  -> OS startup code    │
+│   saved rbp    -> OS startup code    │  <- main's rbp
+│   final        (rbp-4)  ?            │
+├──────────────────────────────────────┤
+│ calculate frame                      │
+│   return addr  -> inside main        │
+│   saved rbp    -> main's rbp         │  <- calculate's rbp (0x20 below main's)
+│   x            (rbp-4)  5            │
+│   y            (rbp-8)  ?            │
+├──────────────────────────────────────┤
+│ multiply frame                       │
+│   return addr  -> inside calculate   │
+│   saved rbp    -> calculate's rbp    │  <- multiply's rbp (0x20 below calculate's)
+│   result       (rbp-4)  15           │
+└──────────────────────────────────────┘  <- rsp (top of the stack)
+Low address
+```
+
+Remember the order inside every frame: **return address (highest), saved rbp, locals (lowest).** The arguments `a=5, b=3` arrived in registers `edi` and `esi`.
+
+### **Calls and Returns Step by Step**
+
+1. `main` executes `call calculate`: the CPU pushes the **return address**; `calculate` pushes `rbp` and sets `rbp = rsp`.
+2. `calculate` stores `x = 5`, puts 5 and 3 into `edi` and `esi`, and executes `call multiply`.
+3. `multiply` computes `result = 15`, puts it in `eax`, and **returns**: `pop rbp` restores `calculate`'s frame pointer, `ret` pops the return address.
+4. `calculate` stores `y = 15`, returns `y + 1 = 16` in `eax`.
+5. `main` stores `final = 16`.
+
+The stack at the end of each step is exactly the diagram above with the top frame removed.
+
+### **Do Not Trust the Picture: Print It**
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+static void show(const char *fn, int *local) {
+    uintptr_t *fp = __builtin_frame_address(1);   /* rbp of the calling function */
+    printf("%-10s rbp=%p  saved rbp=%p  return addr=%p  local at rbp%+ld\n", fn,
+           (void*)fp, (void*)fp[0], (void*)fp[1], (long)((char*)local - (char*)fp));
+}
+/* multiply, calculate and main call show("...", &local) as above */
+```
+
+Real output (`gcc -O0 -fno-omit-frame-pointer -fno-stack-protector`; addresses change on every run because of ASLR):
+
+```
+multiply   rbp=0x7ffe9f1b6cb0  saved rbp=0x7ffe9f1b6cd0  return addr=0x562374904216  local at rbp-4
+calculate  rbp=0x7ffe9f1b6cd0  saved rbp=0x7ffe9f1b6cf0  return addr=0x562374904248  local at rbp-8
+main       rbp=0x7ffe9f1b6cf0  saved rbp=0x7ffe9f1b6d90  return addr=0x7f1d46e2a1ca  local at rbp-4
+```
+
+- `multiply`'s saved `rbp` equals `calculate`'s `rbp`: the **control link** chain.
+- Frames are 0x20 = 32 bytes apart: return address (8) + saved rbp (8) + locals (16, padded so `rsp` stays 16-byte aligned).
+- Each frame sits **below** its caller's frame: the stack grows down.
+
+---
+
+## **Recursion, Stack Depth and Tail Calls**
+
+### **Every Call Gets a Frame**
+
+```ocaml
+let rec fact n = if n <= 1 then 1 else n * fact (n - 1)     (* OCaml *)
+```
+
+```
+fact 3          frames on the stack
+  fact 2        [main] [fact 3] [fact 2] [fact 1]   <- deepest
+    fact 1
+```
+
+The multiplication happens **after** the recursive call returns, so each frame must stay alive: depth n means n frames. The stack is finite (about 8 MB for the main thread on Linux):
+
+| Language | What happens with a very deep recursion |
+|----------|----------------------------------------|
+| Python | `RecursionError: maximum recursion depth exceeded` (the interpreter's limit is 1000 by default) |
+| C and compiled code of your project at `-O0` | Segmentation fault when the stack is full |
+| Optimizing compiler | May turn some recursions into loops (see below) |
+
+We checked the last two on the lecture's mini compiler: `count 100000` runs fine, `count 10000000` crashes at `-O0` and runs at `-O2` because LLVM rewrites it into a loop.
+
+### **Tail Calls: A Call That Needs No Frame**
+
+A call in **tail position** is the last thing a function does; nothing waits for its result.
+
+```ocaml
+let rec fact_acc n acc =            (* tail recursive *)
+  if n <= 1 then acc else fact_acc (n - 1) (n * acc)
+```
+
+```
+fact_acc 3 1  ->  fact_acc 2 3  ->  fact_acc 1 6  ->  6      (same frame reused: a jump)
+```
+
+- A **tail call** can be compiled as a **jump** that reuses the current frame. Constant stack space.
+- **Functional languages depend on this** because they have no loops: iteration is recursion. OCaml and Scheme guarantee it; Rust and C compilers may do it as an optimization; **Python never does**.
+- Your language has no loops either. Same story, one level lower: LLVM has a guaranteed form, `musttail call` (a bonus in your final project).
+
+```llvm
+rec:
+  %n1 = sub i32 %n, 1
+  %a1 = add i32 %acc, 1
+  %r  = musttail call i32 @count(i32 %n1, i32 %a1)   ; must be followed by `ret %r`
+  ret i32 %r
+```
+
+With this IR, a 100-million-deep recursion runs in constant stack at `-O0` (the backend emits `jmp count`). gcc at `-O2` also compiles `fact` and `fact_acc` as loops, but that is an optimization, not a promise.
+
+---
+
+## **Functions as Values: Nested Functions and Closures**
+
+### **The Problem**
+
+```ocaml
+let make_adder n = fun x -> x + n      (* the inner function uses n from its parent *)
+let add5 = make_adder 5                (* make_adder has returned: its frame is gone *)
+let r = add5 10                        (* but n = 5 must still be available *)
+```
+
+A frame disappears when its function returns, but the inner function still needs `n`. Two classic solutions:
+
+| Technique | Idea | When |
+|-----------|------|------|
+| **Static link (access link)** | Each frame stores a pointer to the frame of the lexically enclosing function | Nested functions that cannot outlive their parent (Pascal, Ada) |
+| **Closure** | Function value = **code pointer + captured variables**, allocated on the **heap** | First-class functions that can escape (OCaml, JavaScript, Python, Rust, Java lambdas) |
+
+### **A Closure in Memory**
+
+```
+add5 ─────► ┌────────────────────┐   heap
+            │ code pointer       │──► code of the lambda
+            │ captured n = 5     │
+            └────────────────────┘
+```
+
+```c
+typedef struct { int (*code)(void *env, int x); int n; } Closure;
+int add_n(void *env, int x) { return x + ((Closure*)env)->n; }
+Closure *c = malloc(sizeof *c);  c->code = add_n;  c->n = 5;
+int r = c->code(c, 10);                                  /* 15 */
+```
+
+### **What Your Project Does**
+
+Your language restricts this on purpose: an anonymous function **may not capture** local variables. Then a function value is just a **pointer to code** (`ptr @double` in LLVM IR): no environment, no heap, no closure record. A capturing lambda is rejected with a diagnostic, unless you take the closure-conversion bonus, which needs exactly the structure above.
+
+---
+
+## **Heap Management: Beyond the Stack**
+
+### **When Stack Allocation Is Not Enough**
+
+```java
+class Node {
+    int value;
+    Node next;
+    Node(int v) { value = v; next = null; }
+}
+
+Node head = new Node(1);        // the object is on the heap; `head` (a reference) is on the stack
+head.next = new Node(2);
+```
+
+Data whose size or lifetime is not known when the function is compiled needs the **heap**: dynamic data structures, objects that outlive the creating function, closures that escape. (A JIT with escape analysis may avoid the allocation when an object provably does not escape; semantically it is still a heap object.)
+
+### **Stack vs Heap Allocation in C**
+
+```c
+void stack_example(void) {
+    int local_array[100];        // on the stack: size known at compile time
+    local_array[0] = 42;
+}                                // freed automatically when the function returns
+
+void heap_example(int size) {
+    int *a = malloc(size * sizeof(int));   // size known only at run time
+    if (a != NULL) {
+        a[0] = 42;
+        free(a);                 // MUST be freed manually
+    }
+}
+```
+
+### **The Two Classic Bugs**
+
+```c
+void memory_leak(void) {
+    int *data = malloc(1000);
+    data[0] = 5;
+    // forgot free(data): the 1000 bytes are lost until the program ends
+}
+
+void use_after_free(void) {
+    int *ptr = malloc(sizeof(int));
+    *ptr = 10;
+    free(ptr);
+    *ptr = 20;                   // writing to freed memory: undefined behavior
+}
+```
+
+Tools find them: compile with `gcc -g -fsanitize=address` (AddressSanitizer), run, and read the report:
+
+```
+ERROR: AddressSanitizer: heap-use-after-free on address 0x502000000010
+WRITE of size 4 at 0x502000000010 thread T0
+    #0 main uaf.c:6
+...
+freed by thread T0 here:
+    #0 free
+    #1 main uaf.c:5
+```
+
+```
+ERROR: LeakSanitizer: detected memory leaks
+Direct leak of 1000 byte(s) in 1 object(s) allocated from:
+    #0 malloc
+    #1 main leak.c:2
+```
+
+Run your own C code with sanitizers during development (and your generated code too). These tools are also the right way to check C that an AI assistant wrote for you.
+
+### **Heap Management Visualization**
+
+```
+Heap (grows up)               After free(block2), then malloc(300):
+┌─────────────────┐           ┌─────────────────┐
+│ block1: 100 B   │           │ block1: 100 B   │
+│ free space      │           │ FREE: 200 B     │  <- too small for 300 B
+│ block2: 200 B   │           │ block3: 50 B    │
+│ block3: 50 B    │           └─────────────────┘
+└─────────────────┘           external fragmentation: total free space is enough,
+                              but no contiguous piece is
+```
+
+Production allocators (glibc `malloc`, jemalloc, tcmalloc, mimalloc) use size classes and per-thread arenas to keep this fast and to limit fragmentation.
+
+---
+
+## **Memory Management Strategies**
+
+### **Who Frees the Memory?**
+
+| Strategy | How it works | Pros | Cons | Used by |
+|----------|--------------|------|------|---------|
+| **Manual** | programmer calls `free` | full control, no runtime | leaks, use-after-free, double free | C, C++ (raw pointers) |
+| **Ownership / RAII** | each value has one owner; memory is freed when the owner goes out of scope | no GC pauses, safe if the compiler checks it | steeper programming model | Rust (checked at compile time), C++ smart pointers |
+| **Tracing garbage collection** | runtime finds unreachable objects (mark-sweep, copying, generational) | safe, productive | memory overhead, pauses (reduced by concurrent and generational collectors) | Java, Go, C#, OCaml, JavaScript |
+| **Reference counting** | each object counts its references; freed at zero | predictable, immediate | cycles leak (need a cycle collector), counting cost | Swift (ARC), CPython (plus a cycle collector) |
+| **Regions / arenas** | allocate many objects together, free the whole region at once | very fast, no per-object free | all-or-nothing lifetime | compilers (AST arenas!), game engines, request handlers |
+
+> Your own compiler is a good arena candidate: AST nodes live exactly as long as one compilation. In C, allocating every node from one arena and freeing it once removes a whole class of bugs.
+
+### **Stack vs Heap Trade-offs**
+
+| Aspect | Stack | Heap |
+|--------|-------|------|
+| **Allocation speed** | Very fast (move the stack pointer) | Slower (search, bookkeeping) |
+| **Deallocation** | Automatic on return | Manual, ownership scope, reference count, or GC |
+| **Lifetime** | Until the function returns | As long as it is reachable or not freed |
+| **Size** | Limited (about 8 MB on Linux, 1 MB on Windows by default) | Large (limited by the OS) |
+| **Fragmentation** | None | Can occur |
+| **Typical bugs** | Stack overflow (deep recursion, huge locals), buffer overruns that smash the return address | Leaks, use-after-free, double free, fragmentation |
+
+Note that **neither** is bounds checked in C. Bounds checking is a language feature (Rust, Java, Go, Python), not a property of the stack or the heap.
+
+---
+
+## **Modern Memory Management**
+
+### **Ownership: Compile-Time Memory Management (Rust)**
+
+The Rust book states the rules: every value has an **owner**; there can be **one owner at a time**; when the owner goes out of scope the value is **dropped**.
+
+```rust
+fn process_data() {
+    let data = vec![1, 2, 3];          // allocated on the heap, `data` owns it
+    let processed = transform(data);   // ownership moves: `data` can no longer be used
+    println!("{:?}", processed);
+}                                      // `processed` goes out of scope: memory freed
+
+fn transform(mut v: Vec<i32>) -> Vec<i32> {
+    v.push(4);
+    v                                  // ownership returned to the caller
+}
+```
+
+Using `data` after the move is a **compile-time error**, so use-after-free cannot be written in safe Rust. This is the same idea as the type checker of week 8: a static analysis that rejects bad programs before they run.
+
+### **Why Memory Safety Is a Policy Topic Now**
+
+- A large share of serious security vulnerabilities in C and C++ code bases are memory-safety bugs (buffer overruns, use-after-free).
+- In February 2024 the White House Office of the National Cyber Director published *Back to the Building Blocks: A Path Toward Secure and Measurable Software*, urging a shift toward **memory-safe languages**.
+- Responses: Rust in new systems code, sanitizers and fuzzing for existing C, hardware features (pointer tagging, shadow stacks), and safer runtimes.
+
+### **Other Trends**
+
+- **Escape analysis** (Java, Go): objects that do not escape a function can live on the stack or in registers.
+- **Generational and concurrent collectors** (JVM G1, ZGC, Shenandoah; the Go GC is concurrent, non-moving mark-sweep).
+- **Pointer compression** (V8, JVM compressed object pointers): 32-bit references on 64-bit machines.
+- **Better allocators** (jemalloc, mimalloc) and arenas.
+
+---
+
+## **How Types Influence the Runtime**
+
+### **Semantic Analysis Feeds Layout**
+
+```c
+struct Point {
+    int x, y;            /* 4 + 4 bytes */
+    struct Point *next;  /* 8 bytes on a 64-bit machine */
+};                       /* sizeof(struct Point) == 16 (checked with gcc on x86-64) */
+```
+
+```java
+class Point { int x, y; Point next; }
+// a Java object adds an object header (typically 8 to 16 bytes) and padding:
+// on a typical 64-bit HotSpot JVM about 24 bytes (check with the JOL tool)
+```
+
+- The **type** tells the compiler the size, alignment and offsets of fields.
+- Value types can live on the stack or in registers; reference types usually live on the heap.
+- Type information also drives: **virtual method table** layout (next week), array **bounds-check elimination**, and which values the GC must scan.
+
+---
+
+## **Runtimes in the Real World**
+
+### **Different Languages, Different Strategies**
+
+**JavaScript (V8):**
+- A pipeline of tiers: interpreter, baseline compilers, and an optimizing compiler (TurboFan)
+- **Hidden classes** and **inline caches** for fast property access
+- Generational garbage collector
+
+**Java (JVM):**
+- The JVM spec defines frames: *"Each frame has its own array of local variables, its own operand stack, and a reference to the run-time constant pool"* (JVMS 2.6), so the JVM is a **stack machine**
+- Generational GC with low-pause collectors; JIT with profile-guided optimization; escape analysis
+
+**Go:**
+- Goroutine stacks start small and **grow dynamically** (copied to a bigger block when needed)
+- Concurrent, non-moving mark-sweep GC
+- Value types reduce heap pressure
+
+**WebAssembly:**
+- **Linear memory** model, sandboxed execution
+- A stack machine whose call stack is managed by the engine (not part of the program-visible linear memory), so buffer overflows cannot overwrite return addresses
+- Wasm 3.0 (September 2025) added garbage collection support and tail calls
+
+---
+
+## **AI Systems Are Runtimes Too**
+
+### **The Same Ideas, A New Memory Problem**
+
+- **KV cache paging.** LLM serving keeps the attention key/value cache of every request in GPU memory. The PagedAttention paper (vLLM, SOSP 2023) manages it **inspired by virtual memory and paging** in operating systems, to avoid fragmentation and waste. Same problem as the heap slides, same family of solutions.
+- **Caching allocators.** Deep learning frameworks do not call the GPU allocator for every tensor; they keep a pool of blocks and reuse them (size classes, fragmentation again).
+- **Static memory planning.** ML compilers such as XLA analyze buffers of the whole computation graph at compile time to allocate and schedule memory. This is what *static knowledge feeds the runtime* looks like when the whole program is a graph.
+- **LLM-written systems code.** An assistant can write C that compiles and passes a few tests but leaks or overruns a buffer. Sanitizers and tests are the check; "it compiled" is not.
+
+### **For Your Compiler**
+
+The runtime of your final project is tiny: LLVM frames plus a C file (`runtime.c`) with the print functions. Think about what the extras would cost: closures need a heap, lists need allocation (is `malloc` without `free` acceptable, and when does it stop being acceptable?).
+
+---
+
+## **Project Implications**
+
+### **What Your Final Project Gets for Free, and What It Does Not**
+
+| Topic | In your compiler |
+|-------|------------------|
+| **Frames and registers** | LLVM allocates them; you emit `define`, `call`, `ret` |
+| **Calling convention** | LLVM follows the platform ABI; `call i32 @f(i32 %x)` is enough |
+| **Heap** | None in the baseline: no allocation, no closures, no lists |
+| **Function values** | A `ptr` to a function: `call i32 %f(i32 %x)` |
+| **Stack depth** | Deep recursion crashes the compiled program with a segmentation fault at `-O0`; `-O2` may turn it into a loop. Document it if you test it |
+| **Division by zero** | Your runtime function prints a message to stderr and exits with a nonzero code |
+| **`runtime.c`** | `print_int`, `print_bool`, and the division-by-zero handler |
+| **Closure bonus** | Needs a heap-allocated environment, as in the closure slide |
+| **Tail-call bonus** | `musttail` or loop lowering |
+
+### **Three Paths, Same Runtime Contract**
+
+- **C / Flex / Bison:** the compiler is a C program; use an arena for AST nodes.
+- **Python / PLY:** the compiler runs on a VM that does all this for you; the compiled program still follows the LLVM/C runtime contract.
+- **OCaml / Menhir:** garbage collected compiler, same output.
+
+Whatever the path, the **output** is an `.ll` file linked with `runtime.c`: `clang prog.ll runtime.c -o prog`.
+
+---
+
+## **Practical Exercise: Stack Tracing**
+
+### **Trace This Program (x86-64 style, arguments in registers)**
+
+```c
+int multiply(int a, int b) {
+    int result = a * b;
+    return result;
+}
+
+int calculate(void) {
+    int x = 5;
+    int y = multiply(x, 3);
+    return y + 1;
+}
+
+int main(void) {
+    int final = calculate();
+    return final;
+}
+```
+
+1. Draw the stack **when `multiply` is about to return**: three frames, each with return address, saved frame pointer and locals **in the right order**.
+2. Which values are in each frame? Which registers carry `a` and `b` on Linux? On Windows?
+3. What does the stack look like after `multiply` returns? After `calculate` returns?
+4. What changes if the call were `multiply(1, 2, 3, 4, 5, 6, 7)` with seven arguments? (Where does the seventh go?)
+
+### **Answers**
+
+1. From the top (high addresses): `main` (`final = ?`), `calculate` (`x = 5`, `y = ?`), `multiply` (`result = 15`); inside each: return address, saved `rbp`, locals.
+2. `a` in `edi`, `b` in `esi` (System V); `ecx` and `edx` (Windows).
+3. After `multiply` returns, the `multiply` frame is gone and `y = 15`. After `calculate` returns, `final = 16`.
+4. Six arguments travel in registers; the **seventh is pushed on the stack by the caller** (above the return address, at a positive offset from the callee's frame pointer).
+
+### **Try It**
+
+- Run the `frames.c` program from this lecture and check the 0x20 spacing.
+- On https://godbolt.org compile `calculate` and `fact_acc` with `-O0` and `-O2`: where did the frame go?
+- Write a recursive C function with depth 10 000 000 and run it. Then compile with `-O2`. What changed?
 
 ---
 
 ## **Key Takeaways**
 
-### **What Every Compiler Designer Needs to Know**
+1. **Memory is layered:** code, static data, heap, stack each serve a purpose.
+2. **Activation records** hold the state of a call: arguments, return address, saved frame pointer, locals, in that order from high to low address.
+3. **Calling conventions** are platform contracts (x86-64, ARM64, RISC-V, MIPS differ); LLVM applies them for you.
+4. **Recursion costs stack space**; a **tail call** reuses the frame, which is why functional languages guarantee it.
+5. **Function values:** a plain code pointer if nothing is captured; a heap-allocated **closure** if something is.
+6. **Heap management** is a language design choice: manual, ownership, GC, reference counting, arenas.
+7. **Modern runtimes** balance safety, speed and complexity, and AI systems rediscover the same techniques.
 
-1. **Memory is layered**: Code, static, heap, stack each serve different purposes
-2. **Activation records** manage function execution state
-3. **Stack discipline** enables function calls and returns
-4. **Heap management** strategies vary by language philosophy
-5. **Modern runtimes** balance safety, performance, and complexity
+### **Next Lecture: Code Generation**
 
-### **Next Lecture Preview:**
-**Code Generation** - How we translate our understood program into actual machine instructions that use this runtime environment efficiently!
-
----
-
-## **Further Reading & Resources**
-
-### **Deep Dives:**
-
-**Academic:**
-- "The Garbage Collection Handbook" by Jones et al.
-- "Compilers: Principles, Techniques, and Tools" (Dragon Book) Chapter 7
+How do we turn the typed AST into LLVM IR (and, as a reference, MIPS), following exactly the rules of this lecture?
 
 ---
 
-**Practical:**
-- **V8 Blog**: https://v8.dev/blog
-- **Java HotSpot VM Internals**
-- **Rustonomicon**: https://doc.rust-lang.org/nomicon/
+## **Further Reading and Resources**
 
----
+**Official documents**
+- Java Virtual Machine Specification, chapter 2 (frames): https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-2.html
+- Microsoft x64 calling convention: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention
+- Arm AAPCS64: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
+- RISC-V ELF psABI (calling convention): https://github.com/riscv-non-isa/riscv-elf-psabi-doc
+- The Rust Book, chapter 4 (ownership): https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html
+- A Guide to the Go Garbage Collector: https://go.dev/doc/gc-guide
+- LLVM Language Reference (calls, `musttail`): https://llvm.org/docs/LangRef.html
 
-**Hands-on Practices:**
-- Implement a simple stack machine
-- Study JVM bytecode or WebAssembly
-- Experiment with different garbage collection algorithms
+**Books**
+- Cooper and Torczon, *Engineering a Compiler* (the procedure abstraction)
+- Appel, *Modern Compiler Implementation* (activation records)
+- Aho et al., *Compilers: Principles, Techniques, and Tools* (Dragon Book), chapter 7
+- Nystrom, *Crafting Interpreters* (free online): a bytecode VM, closures and garbage collection from scratch, https://craftinginterpreters.com
+- Jones et al., *The Garbage Collection Handbook*
 
+**Papers and reports**
+- Kwon et al., *Efficient Memory Management for Large Language Model Serving with PagedAttention* (SOSP 2023), https://arxiv.org/abs/2309.06180
+- ONCD, *Back to the Building Blocks: A Path Toward Secure and Measurable Software* (February 2024)
+
+**Hands-on**
+- Compiler Explorer: https://godbolt.org
+- `gcc -fsanitize=address`, `valgrind`
+- Implement a simple stack machine; read JVM bytecode (`javap -c`) or WebAssembly text
