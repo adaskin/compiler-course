@@ -1,0 +1,13 @@
+let double (x: int): int = x * 2
+
+let apply (f: int -> int) (x: int): int = f x
+
+let fact (n: int): int =
+  if n <= 1 then 1 else n * fact (n - 1)
+
+let answer =
+  let x = 5 in
+  let y = apply double x in
+  if y > fact 3 then y else fact 3
+
+print_int answer
