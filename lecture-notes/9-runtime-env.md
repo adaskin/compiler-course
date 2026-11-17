@@ -242,18 +242,51 @@ Order inside every frame: **return address, saved frame pointer, then locals.**
 
 ## **Recursion and Tail Calls**
 
+```python
+# Regular recursion — O(n) stack space
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)  # work happens AFTER the call returns
+
+# Tail recursion — O(1) stack space (with TCO)
+def factorial_tail(n, acc=1):
+    if n <= 1:
+        return acc
+    return factorial_tail(n - 1, n * acc)  # call is the LAST thing done   
+
+```
+---
+
+```python
+#Naive: O(2^n) time, O(n) stack
+def fib(n):
+    if n < 2: return n
+    return fib(n-1) + fib(n-2)  # work AFTER the call (the +)   
+
+# Tail recursion-O(1) stack, O(n) time
+def fib_tail(n, a=0, b=1):
+    if n == 0:
+        return a
+    return fib_tail(n - 1, b, a + b)   
+```
+
+---
+
 ### **Every Call Gets a Frame**
 
 ```ocaml
-let rec fact n = if n <= 1 then 1 else n * fact (n - 1)        (* frames: n *)
-let rec fact_acc n acc =                                       (* tail call: the last thing done *)
-  if n <= 1 then acc else fact_acc (n - 1) (n * acc)           (* frame can be reused: a jump *)
+let rec fact n = if n <= 1 then 1 else n * fact (n - 1)        (* O(n) frames *)
+let rec fact_acc n acc =                                       (* tail call *)
+  if n <= 1 then acc else fact_acc (n - 1) (n * acc)           (* O(1) frames *)
 ```
 
-- `fact`: the multiplication happens **after** the call returns, so depth n needs n frames.
-- `fact_acc`: nothing waits for the result, so a compiler can turn the call into a **jump**: constant stack.
-- The stack is finite (about 8 MB on Linux): Python raises `RecursionError` at depth 1000 by default; compiled C or LLVM code crashes with a segmentation fault at `-O0`.
-- **Functional languages have no loops, so they depend on this.** OCaml and Scheme guarantee it; gcc at `-O2` does it as an optimization; Python never does. LLVM has a guaranteed form: `musttail call`.
+- `fact`: the `*` waits for the call to return → each frame must stay alive.
+- `fact_acc`: the call **is** the last thing done → compiler replaces it with a jump.
+
+The stack is finite. Without TCO, deep recursion overflows it (Python: `RecursionError` at ~1000; C/LLVM: segfault).
+
+**Language support:** OCaml and Scheme guarantee TCO; gcc does it at `-O2`; Python never does.  LLVM has a guaranteed form: `musttail call`.
 
 ---
 
