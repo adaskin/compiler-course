@@ -15,7 +15,7 @@
     - [Why This Matters for AI Compilers](#why-this-matters-for-ai-compilers)
   - [The AI Compiler: Bridging Models and Hardware](#the-ai-compiler-bridging-models-and-hardware)
     - [The AI Compilation Pipeline](#the-ai-compilation-pipeline-1)
-    - [AI Compiler Ecosystem in 2025](#ai-compiler-ecosystem-in-2025)
+    - [AI Compiler Ecosystem](#ai-compiler-ecosystem)
     - [Real-World Impact: Case Study](#real-world-impact-case-study)
     - [Hands-On: From Tensor Operations to Compiled Code](#hands-on-from-tensor-operations-to-compiled-code)
     - [AI Framework Comparison: PyTorch vs JAX vs TensorFlow](#ai-framework-comparison-pytorch-vs-jax-vs-tensorflow)
@@ -55,7 +55,7 @@ AI Framework (PyTorch/TensorFlow)
          ↓
    Graph Extraction
          ↓
-Computational Graph (ONNX/TorchScript)
+Computational Graph (FX graph / ONNX / StableHLO)
          ↓
   Graph Optimizations
          ↓
@@ -69,7 +69,6 @@ Hardware-Specific Lowering
 
 ---
 
----
 ## Why Traditional Compilers Aren't Enough
 
 **Traditional Compiler Flow:**
@@ -85,15 +84,13 @@ C/Java/Python Code → Lexing/Parsing → AST → Optimizations → Machine Code
    
 ---
 
-This diversity in hardware targets means traditional compilers, which are designed for CPUs, can't automatically adapt.
 **Example Challenge:** A single AI model might need to run on:
 - An NVIDIA GPU in a data center
-- An iPhone's Neural Engine
+- An iPhone (CPU, GPU, or Neural Engine, reached through Core ML)
 - A Raspberry Pi with limited memory
 - A Google TPU in the cloud
- For example, a single AI model might need to run on  
 
-Traditional compilers can't handle this diversity automatically. 
+Traditional compilers are built around CPU-style scalar code and cannot adapt a tensor program to this diversity automatically.
 
 ---
 
@@ -115,7 +112,7 @@ model = MyNeuralNetwork()
 ---
 
 
-**Typical Results:**
+**Typical results (illustrative numbers; they vary by model and hardware):**
 - **Inference latency**: 100ms
 - **Power consumption**: 10W
 - **Model size**: 500MB (FP32)
@@ -126,12 +123,12 @@ model = MyNeuralNetwork()
 
 **With Modern AI Compilers: Write Once, Run Anywhere**
 
-**Today's Workflow with AI Compilers:**
+**Today's Workflow with AI Compilers (pseudo-code):**
 ```python
 # One implementation (Python/PyTorch/JAX)
 model = MyNeuralNetwork()
 
-# Single compilation step
+# Single compilation step (compile_for_target is a made-up name)
 compiled_model = compile_for_target(
     model=model,
     target="auto",  # Auto-detects hardware
@@ -143,7 +140,7 @@ results = compiled_model(input_data)
 
 ---
 
-**Achievable Results:**
+**Achievable results (illustrative numbers):**
 - **Inference latency**: 10ms (10× faster)
 - **Power consumption**: 2W (5× more efficient)
 - **Model size**: 125MB (4× smaller with quantization)
@@ -391,7 +388,8 @@ filter = torch.tensor([
 output = torch.nn.functional.conv2d(image, filter, padding=1)
 print("Convolution output:")
 print(output)
-# The filter slides over the image, computing dot products at each position
+# The filter slides over the image, computing a dot product at each position
+# (deep-learning "convolution" is really cross-correlation: the filter is not flipped)
 ```
 
 ---
@@ -573,10 +571,12 @@ B = torch.randn(5, 6)
 tensor = torch.randn(12)
 # reshaped = tensor.reshape(3, 5)  # ERROR! 12 elements can't make 3x5 (needs 15)
 
-# 4. Views require contiguous memory
-non_contiguous = tensor[::2]  # Take every other element
-# viewed = non_contiguous.view(3, 2)  # ERROR! Tensor not contiguous
-reshaped = non_contiguous.reshape(3, 2)  # OK! Reshape works
+# 4. view() needs a compatible memory layout; reshape() copies if it must
+M = torch.randn(2, 3)
+non_contiguous = M.T            # transpose: same memory, different strides
+# viewed = non_contiguous.view(6)  # ERROR! Not viewable with these strides
+flat = non_contiguous.reshape(6)   # OK: reshape makes a copy when needed
+# (or call .contiguous().view(6))
 ```
 
 ---
@@ -647,10 +647,10 @@ for i in range(1024):          # Outer loop
 **Matrix Multiplication: C = A × B**
 - 1024×1024 matrices have 1,048,576 elements each
 - Naive algorithm requires ~1 billion multiply-add operations
-- 3 GHz CPU: Could theoretically do this in ~0.33 seconds
-- Reality: ~5-10 seconds due to:
+- One 3 GHz core doing one multiply-add per cycle: ~0.33 seconds at best
+- A naive triple loop is typically several times slower (seconds) due to:
   * Memory bandwidth limits (can't feed data fast enough)
-  * Cache misses (data not in fast cache memory)
+  * Cache misses (B is read column by column, with large strides)
   * Instruction overhead (loop counters, branches)
 
 ---
@@ -670,8 +670,8 @@ C = np.matmul(A, B)  # NumPy uses optimized BLAS libraries
 cpu_time = time.time() - start
 
 print(f"1024×1024 matrix multiplication on CPU: {cpu_time:.3f} seconds")
-# Typical result: 0.1-0.5 seconds (with optimized libraries)
-# Without optimization: Could be 10+ seconds!
+# Typical result: roughly 5-50 ms (optimized, multithreaded BLAS; ~6 ms on a 4-core test machine)
+# A naive triple loop in C takes seconds; in pure Python, minutes
 ```
 
 ---
@@ -687,9 +687,9 @@ Imagine you're now a worker with 8 hands. You can process 8 items simultaneously
 ---
 
 **CPU SIMD Extensions:**
-- **SSE** (Streaming SIMD Extensions): Process 4 floats at once
-- **AVX** (Advanced Vector Extensions): Process 8 floats at once
-- **AVX-512**: Process 16 floats at once
+- **SSE** (Streaming SIMD Extensions): 128-bit registers, 4 floats at once
+- **AVX/AVX2** (Advanced Vector Extensions): 256-bit, 8 floats at once
+- **AVX-512**: 512-bit, 16 floats at once (Arm equivalents: NEON, SVE)
 
 ```python
 # SIMD concept (pseudocode)
@@ -758,7 +758,8 @@ cpu_time = time.time() - start
 a_gpu = a_cpu.cuda()  # Move to GPU
 b_gpu = b_cpu.cuda()
 
-# GPU warm-up
+# GPU warm-up: the first CUDA call pays one-time initialization costs
+_ = a_gpu + b_gpu
 torch.cuda.synchronize()
 start = time.time()
 c_gpu = a_gpu + b_gpu
@@ -768,7 +769,9 @@ gpu_time = time.time() - start
 print(f"CPU time: {cpu_time:.4f} seconds")
 print(f"GPU time: {gpu_time:.4f} seconds")
 print(f"Speedup: {cpu_time/gpu_time:.1f}x")
-# Typical result: GPU is 10-50x faster for large operations
+# Result depends on the hardware; for large, compute-heavy operations
+# (matmul, convolution) a GPU is often 10-100x faster. For a simple
+# element-wise add like this one the gain is smaller (it is memory-bound).
 ```
 
 ---
@@ -821,22 +824,28 @@ Input:     A matrix      B matrix
 
 ---
 
-**How a 4×4 Systolic Array Works:**
+**How a Systolic Array Works (2×2 example, weights stay in the cells):**
 ```
-Time 1: Load first elements
-[ a00*b00 ] [  0   ] [  0   ] [  0   ]
-[   a01   ] [ a00  ] [  0   ] [  0   ]
-[   a02   ] [  0   ] [ a00  ] [  0   ]
-[   a03   ] [  0   ] [  0   ] [ a00  ]
+Each cell holds one weight b[k][j]. Per clock a cell:
+  (1) multiplies the activation arriving from the left by its weight,
+  (2) adds the partial sum arriving from above,
+  (3) passes the activation right and the new sum down.
 
-Time 2: Shift and multiply
-[ a00*b00 + a01*b10 ] [ a01*b11 ] [  0   ] [  0   ]
-[   a02   ] [ a00*b01 + a01*b11 ] [ a01  ] [  0   ]
-[   a03   ] [  0   ] [ a00*b02 + a01*b12 ] [ a01  ]
-[   a04   ] [  0   ] [  0   ] [ a00*b03 + a01*b13 ]
+              col 0          col 1
+row 0 (k=0):  [ b00 ] ----→  [ b01 ] ----→
+                ↓              ↓
+row 1 (k=1):  [ b10 ] ----→  [ b11 ] ----→
+                ↓              ↓
+              c_i0           c_i1
 
-... continues until full matrix computed
+Row i of A streams in from the left, skewed by one clock per row:
+  t=0: a_i0 meets b00  →  sum = a_i0*b00
+  t=1: a_i0 meets b01  →  sum = a_i0*b01      (column 1, row 0)
+       a_i1 meets b10  →  sum = a_i0*b00 + a_i1*b10 = C[i][0]  ✓ leaves column 0
+  t=2: a_i1 meets b11  →  sum = a_i0*b01 + a_i1*b11 = C[i][1]  ✓ leaves column 1
 ```
+- Each value is read from memory once and reused by many cells, which saves memory bandwidth
+- A TPU applies the same idea to a 256×256 grid (65,536 multiply-accumulate units)
 
 ---
 
@@ -845,12 +854,13 @@ Time 2: Shift and multiply
 - Tensor Cores compute: D = A × B + C
   - Where A, B, C, D are small matrices (like 4×4 or 16×16)
 
-- Regular GPU core: 1 multiply-add per cycle (FP32)
-- Tensor Core: 64 multiply-adds per cycle (mixed precision)
+- Regular GPU core (CUDA core): 1 FP32 multiply-add per cycle
+- Tensor Core: a whole small matrix multiply-accumulate per cycle (FP16/BF16 inputs, FP32 accumulate)
 
 Example: A100 GPU has 432 Tensor Cores
- - Each can do 64 FP16 operations per cycle
- - Total: 432 × 64 = 27,648 operations per cycle!
+ - Each can do 256 FP16 multiply-adds per cycle (a V100 Tensor Core: 64)
+ - Total: 432 × 256 = 110,592 multiply-adds per cycle
+ - At ~1.4 GHz and 2 FLOPs per multiply-add: ≈ 312 TFLOPS (dense FP16)
 
 
 ---
@@ -859,20 +869,24 @@ Example: A100 GPU has 432 Tensor Cores
 
 **Matrix Multiplication Performance (1024×1024)**
 
-| Hardware | Performance (TFLOPS) | Time for 1024×1024 MatMul | Power Consumption |
-|----------|----------------------|---------------------------|-------------------|
-| **CPU (Intel i9)** | 0.5-1 TFLOPS (FP32) | ~1.0 second | 65-125W |
-| **GPU (NVIDIA RTX 4090)** | 80 TFLOPS (FP32) | ~0.02 seconds | 450W |
-| **GPU with Tensor Cores (A100)** | 312 TFLOPS (FP16 Tensor) | ~0.0005 seconds | 400W |
-| **TPU v4** | 275 TFLOPS (BF16) | ~0.0002 seconds | ~250W |
+A 1024×1024 matmul needs 2 × 1024³ ≈ 2.15 GFLOP (one multiply and one add per term).
+
+| Hardware | Peak throughput | Ideal time for one matmul (2.15 GFLOP ÷ peak) | Power |
+|----------|-----------------|-----------------------------------------------|-------|
+| **CPU (Intel i9)** | ~1 TFLOPS (FP32, all cores, AVX) | ~2 ms | 65-125W |
+| **GPU (NVIDIA RTX 4090)** | ~83 TFLOPS (FP32) | ~0.03 ms | 450W |
+| **GPU with Tensor Cores (A100)** | 312 TFLOPS (dense FP16) | ~0.007 ms | 400W |
+| **TPU v4** | 275 TFLOPS (BF16) | ~0.008 ms | ~200W |
+
+*Ideal times assume peak throughput. A matrix this small will not reach peak on a GPU (kernel launch and memory overheads dominate), and the FP16/BF16 numbers are not directly comparable with FP32.*
 
 
 ---
 
 **Key Observations:**
 
-1. **Performance Gap**: Tensor processors (A100, TPU) are 500-5000x faster than CPUs for matrix multiplication
-2. **Power Efficiency**: TPUs achieve higher performance with less power than high-end GPUs
+1. **Performance Gap**: Peak matmul throughput of tensor hardware (A100, TPU) is two to three orders of magnitude (100-1000x) above a CPU
+2. **Power Efficiency**: Specialized accelerators deliver more operations per watt than general-purpose CPUs and GPUs
 3. **Specialization**: The more specialized the hardware, the better the performance for AI workloads
 4. **Precision Trade-offs**: Tensor Cores/TPUs use lower precision (FP16/BF16) for speed, which is acceptable for most AI applications
 
@@ -881,15 +895,17 @@ Example: A100 GPU has 432 Tensor Cores
 
 ### Real Hardware Examples
 
-**Exercise 1. Apple Neural Engine (iPhone)**
+**Exercise 1. Apple Silicon: CPU vs GPU (MPS backend)**
 ```python
-# On-device AI example
+# On-device AI example. PyTorch's "mps" backend runs on the Apple GPU.
+# The Neural Engine is a separate accelerator, reached through Core ML
+# (e.g. after converting the model with coremltools), not through PyTorch.
 import torch
 import torchvision
 import time
 
 # Load a model
-model = torchvision.models.mobilenet_v2(pretrained=True)
+model = torchvision.models.mobilenet_v2(weights="DEFAULT")  # pretrained weights
 model.eval()
 
 # Create sample input
@@ -900,15 +916,17 @@ start = time.time()
 output_cpu = model(input_tensor)
 cpu_time = time.time() - start
 
-# Run on Neural Engine (if available)
+# Run on the Apple GPU (if available)
 if torch.backends.mps.is_available():
     model = model.to('mps')
     input_tensor = input_tensor.to('mps')
+    model(input_tensor)            # warm-up run
+    torch.mps.synchronize()
     start = time.time()
     output_gpu = model(input_tensor)
     torch.mps.synchronize()
     gpu_time = time.time() - start
-    print(f"Neural Engine speedup: {cpu_time/gpu_time:.1f}x")
+    print(f"GPU speedup: {cpu_time/gpu_time:.1f}x")
 ```
 
 ---
@@ -920,12 +938,10 @@ if torch.backends.mps.is_available():
 import torch
 
 # Automatic mixed precision (AMP)
-from torch.cuda.amp import autocast, GradScaler
-
-scaler = GradScaler()
+scaler = torch.amp.GradScaler("cuda")   # scales the loss so FP16 gradients don't underflow
 
 # Inside training loop:
-with autocast():  # Uses Tensor Cores for FP16 operations
+with torch.autocast(device_type="cuda", dtype=torch.float16):  # FP16 matmuls/convs can use Tensor Cores
     outputs = model(inputs)  # Runs in mixed precision
     loss = criterion(outputs, targets)
 
@@ -942,14 +958,14 @@ scaler.update()
 ```
 General Purpose  →  Specialized
       ↓                ↓
-   CPU           →   GPU    →   TPU    →   ASIC
-   (All tasks)      (Parallel)  (Matrix)   (One task)
+   CPU           →   GPU    →   TPU/NPU →   ASIC
+   (All tasks)      (Parallel)  (Matrix)    (One task)
    
 Examples:
 CPU: Intel Core, AMD Ryzen
 GPU: NVIDIA GeForce, AMD Radeon
-TPU: Google TPU, NVIDIA Tensor Cores
-ASIC: Groq Chip, Cerebras WSE
+Tensor accelerators: Google TPU, NVIDIA Tensor Cores, Apple Neural Engine
+ASIC: Groq LPU, Cerebras WSE
 ```
 
 ---
@@ -958,7 +974,7 @@ ASIC: Groq Chip, Cerebras WSE
 
 **The Compiler's Challenge:**
 ```python
-# Same PyTorch code needs to run on different hardware:
+# Same PyTorch code needs to run on different hardware (pseudo-code):
 model = MyNeuralNetwork()
 # The compiler must generate different code for:
 if target == "CPU":
@@ -971,8 +987,8 @@ elif target == "TPU":
     # Map to systolic array, optimize data flow
     generate_tpu_code(model)
 elif target == "iPhone":
-    # Use Neural Engine, optimize for power
-    generate_ane_code(model)
+    # Use the Neural Engine (via Core ML), optimize for power
+    generate_npu_code(model)
 ```
 
 ---
@@ -1041,22 +1057,22 @@ The hardware dictates what optimizations are possible, and the compiler's job is
 
 **Step 4: Code Generation**
 - Generate actual executable code
-- CUDA for NVIDIA GPUs
+- CUDA / PTX for NVIDIA GPUs
 - Metal for Apple devices
-- Vulkan for cross-platform GPU
-- LLVM for CPUs
+- Vulkan (SPIR-V) for cross-platform GPU
+- LLVM IR for CPUs (this is where the LLVM material from earlier lectures comes back)
 
 
 ---
 
-### AI Compiler Ecosystem in 2025
+### AI Compiler Ecosystem
 
 #### Major Frameworks and Trends
 
 **1. TVM (Apache TVM) - The End-to-End AI Compiler**
 - **Purpose**: Compile models from multiple frameworks (PyTorch, TensorFlow, ONNX) to diverse hardware
-- **Key Innovation**: AutoTVM - uses machine learning to automatically find optimal operator schedules
-- **Target Support**: CPU, GPU (CUDA, ROCm, Metal), TPU, FPGA, and custom accelerators
+- **Key Innovation**: Automatic tuning (MetaSchedule) - searches, guided by a learned cost model, for fast loop schedules
+- **Target Support**: CPU, GPU (CUDA, ROCm, Metal, Vulkan, OpenCL), FPGA, and custom accelerators
 - **Educational Value**: Implements the full compilation pipeline you're learning about
 
 ---
@@ -1065,29 +1081,29 @@ The hardware dictates what optimizations are possible, and the compiler's job is
 Frontend Models
 (PyTorch, TF, ONNX, etc.)
     ↓
-Relay IR (High-level)
+Relax IR (High-level graph)
     ↓
 Graph Optimizations
 (Fusion, Constant folding, etc.)
     ↓
-TIR (Tensor IR) - Loop-level
+TensorIR (TIR) - Loop-level
     ↓
-AutoTVM / AutoScheduler
-(Finds optimal schedules)
+MetaSchedule
+(Searches for optimal schedules)
     ↓
 Hardware-Specific Codegen
 (LLVM, CUDA, Metal, Vulkan, etc.)
     ↓
 Deployable Module
-(Runs on CPU/GPU/TPU/FPGA/etc.)
+(Runs on CPU/GPU/FPGA/etc.)
 ```
 
 ---
 
 **Key Components:**
-1. **Relay**: High-level IR for graph optimizations
-2. **TIR**: Low-level IR for loop transformations
-3. **AutoTVM**: Uses ML to find optimal operator implementations
+1. **Relax**: High-level IR for graph optimizations (replaces the older Relay)
+2. **TensorIR**: Low-level IR for loop transformations
+3. **MetaSchedule**: Auto-tuning that uses ML to find fast operator implementations (replaces AutoTVM)
 4. **Runtime**: Lightweight deployment across platforms
    
 ---
@@ -1095,16 +1111,16 @@ Deployable Module
 
 
 **2. XLA (Accelerated Linear Algebra) - Google's Compiler**
-- **Primary Use**: JIT compilation for TensorFlow and JAX
-- **Specialization**: Excellent for TPU optimization
-- **Integration**: Built into TensorFlow, used automatically in many cases
+- **Primary Use**: Compiler behind JAX (every `jax.jit`), and opt-in for TensorFlow (`jit_compile=True`) and PyTorch/XLA
+- **Specialization**: Excellent for TPU optimization; also targets GPU and CPU
+- **Ecosystem**: Part of OpenXLA; programs are exchanged as StableHLO (an MLIR dialect)
 
 ---
 
 **3. MLIR (Multi-Level Intermediate Representation)**
 - **Purpose**: Not a compiler itself, but infrastructure for building compilers
 - **Innovation**: "Dialect" system allows different abstraction levels (tensor ops, low-level loops, hardware ops)
-- **Used By**: Many newer compilers build on MLIR (like IREE for mobile, Circt for hardware)
+- **Used By**: Many newer compilers build on MLIR (XLA/StableHLO, IREE for mobile and edge, CIRCT for hardware design)
 
 ---
 
@@ -1115,7 +1131,14 @@ Deployable Module
 
 ---
 
-**2025 Trends and Developments:**
+**5. PyTorch 2 (`torch.compile`) - The Compiler Built into the Framework**
+- **TorchDynamo** captures a graph from ordinary Python code (falling back to Python when it cannot)
+- **TorchInductor** generates **Triton** kernels for GPUs and C++/OpenMP code for CPUs
+- Often a one-line change: `model = torch.compile(model)`
+
+---
+
+**Current Trends and Developments:**
 
 **1. Unified Multi-Backend Support**
 - Single model compilation to CPU, GPU, TPU, NPU, FPGA
@@ -1141,16 +1164,7 @@ Deployable Module
 
 ---
 
-**4. Privacy-Preserving Compilation**
-- Federated learning optimizations
-- Secure multi-party computation compilation
-- Differential privacy guarantees at compile time
-
-
----
-
-
-**5. Energy-Aware Compilation**
+**4. Energy-Aware Compilation**
 - Optimizing for battery life on mobile devices
 - Thermal-aware scheduling
 - Carbon footprint reduction through compiler optimizations
@@ -1159,10 +1173,9 @@ Deployable Module
 ---
 
 
-**6. Specialized Hardware Proliferation**
-- Domain-specific accelerators for vision, NLP, recommendation
-- In-memory computing compilation
-- Optical computing interfaces
+**5. Specialized Hardware Proliferation**
+- Domain-specific accelerators for vision, language models, recommendation
+- New hardware (e.g. compute-in-memory) still at the research stage, each needing its own compiler support
 
 ---
 
@@ -1172,7 +1185,7 @@ Deployable Module
 - Researchers hand-tuned CUDA kernels for each new model
 - Months of optimization for production deployment
 - Hardware-specific code that couldn't run elsewhere
-- Inference latency: 100ms, Power consumption: 10W
+- Inference latency: 100ms, Power consumption: 10W (illustrative numbers)
 
 ---
 
@@ -1180,7 +1193,7 @@ Deployable Module
 - Write model once in PyTorch/TensorFlow
 - Compiler automatically optimizes for target hardware
 - Hours instead of months for deployment
-- Inference latency: 10ms, Power consumption: 2W
+- Inference latency: 10ms, Power consumption: 2W (illustrative numbers)
 - Same model runs on cloud GPU, mobile phone, or edge device
 
 ---
@@ -1213,10 +1226,10 @@ C = torch.matmul(A, B)  # This is a tensor operation
 
 ---
 
-**4. Generated code (conceptual CUDA):**
-```python
-"""
-__global__ void matmul_kernel(float* A, float* B, float* C) {
+**4. Generated code (conceptual CUDA, tiled matmul, N = 1024):**
+```cuda
+// Launch: dim3 block(32, 32); dim3 grid(1024/32, 1024/32);
+__global__ void matmul_kernel(const float* A, const float* B, float* C) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     
@@ -1238,8 +1251,8 @@ __global__ void matmul_kernel(float* A, float* B, float* C) {
     }
     C[row*1024 + col] = sum;
 }
-"""
 ```
+*Each block loads 32×32 tiles into fast shared memory once and reuses them 32 times: the memory-hierarchy idea from the GPU slides, produced automatically by the compiler.*
 
 ---
 
@@ -1266,16 +1279,20 @@ model = SimpleNet()
 x = torch.randn(32, 784)  # Batch of 32 images
 output = model(x)
 
-# JIT compilation for deployment
-traced_model = torch.jit.trace(model, x)
-traced_model.save("model.pt")  # Deploy anywhere
+# Compile (PyTorch 2): one line, same model code
+compiled_model = torch.compile(model)
+output = compiled_model(x)   # first call compiles; later calls reuse the compiled kernels
+
+# For deployment, export the graph (torch.export / ONNX)
+exported = torch.export.export(model, (x,))
 ```
 
 ---
 
 **PyTorch Compilation Flow:**
 ```
-PyTorch Model → TorchScript → Optimizations → Hardware-specific code
+PyTorch Model → TorchDynamo (graph capture) → FX graph → TorchInductor → Triton (GPU) / C++ (CPU)
+(TorchScript, `torch.jit`, is the older approach and is now legacy)
 ```
 
 ---
@@ -1298,18 +1315,20 @@ def predict(params, inputs):
     return outputs
 
 # Initialize parameters
+# JAX random numbers are explicit: split the key, never reuse it
 key = jax.random.PRNGKey(0)
-W1 = jax.random.normal(key, (784, 128))
-b1 = jax.random.normal(key, (128,))
-W2 = jax.random.normal(key, (128, 10))
-b2 = jax.random.normal(key, (10,))
+k1, k2, k3, k4, k5 = jax.random.split(key, 5)
+W1 = jax.random.normal(k1, (784, 128))
+b1 = jax.random.normal(k2, (128,))
+W2 = jax.random.normal(k3, (128, 10))
+b2 = jax.random.normal(k4, (10,))
 params = (W1, b1, W2, b2)
 
 # JIT compile the entire function
 compiled_predict = jit(predict)
 
 # Use it (automatically uses XLA compiler)
-x = jax.random.normal(key, (32, 784))
+x = jax.random.normal(k5, (32, 784))
 output = compiled_predict(params, x)
 
 # Also get gradients automatically
@@ -1332,11 +1351,12 @@ import tensorflow as tf
 
 # Define model
 model = tf.keras.Sequential([
-    tf.keras.layers.Dense(128, activation='relu', input_shape=(784,)),
+    tf.keras.Input(shape=(784,)),
+    tf.keras.layers.Dense(128, activation='relu'),
     tf.keras.layers.Dense(10)
 ])
 
-# Convert to TensorFlow Lite for mobile
+# Convert to TensorFlow Lite (now called LiteRT) for mobile
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_model = converter.convert()
@@ -1350,7 +1370,8 @@ with open('model.tflite', 'wb') as f:
 
 **TensorFlow Compilation Flow:**
 ```
-Keras Model → TensorFlow Graph → XLA → TFLite/TPU/GPU code
+Keras Model → TensorFlow Graph (tf.function) → optional XLA → TPU/GPU code
+                                           └→ TFLite/LiteRT converter → mobile/edge
 ```
 
 ---
@@ -1411,14 +1432,14 @@ def tf_model(x, W1, b1, W2, b2):
 # Before: Allocate memory for each intermediate tensor
 # After:  Reuse memory across operations
 
-# 3. Hardware-Specific Optimizations:
+# 3. Hardware-Specific Optimizations (pseudo-code):
 if target == "NVIDIA_GPU":
     # Use Tensor Cores for FP16 matmul
     # Configure CUDA thread blocks
     # Optimize shared memory usage
-elif target == "Apple_Neural_Engine":
-    # Quantize to 8-bit integers
-    # Use AMX instructions
+elif target == "Apple_Silicon":
+    # Hand the model to Core ML, which chooses CPU, GPU or Neural Engine
+    # Use FP16 or 8-bit quantized weights
     # Optimize for power efficiency
 elif target == "Google_TPU":
     # Map to systolic array
@@ -1428,73 +1449,61 @@ elif target == "Google_TPU":
 
 ---
 
-**Generated Code for Different Targets:**
+**Generated Code for Different Targets (simplified sketches):**
 
-```c
-// NVIDIA GPU (CUDA) - Optimized Kernel
-__global__ void fused_kernel(float* x, float* W1, float* b1, 
-                             float* W2, float* b2, float* output) {
-    // Shared memory tiles
-    __shared__ float tile_x[32][32];
-    __shared__ float tile_W1[32][32];
-    
-    // Optimized for Tensor Cores
-    float16 acc = 0;
-    for (int tile = 0; tile < N_TILES; tile++) {
-        // Load tiles
-        load_tile_to_shared(x, tile_x, tile);
-        load_tile_to_shared(W1, tile_W1, tile);
-        __syncthreads();
-        
-        // Tensor Core matrix multiply-add
-        acc = wmma::mma_sync(tile_x, tile_W1, acc);
-        __syncthreads();
+The fused operation: `out = relu(x @ W + b)`, one thread per output element.
+
+```cuda
+// NVIDIA GPU (CUDA): fused matmul + bias + ReLU, no intermediate tensors in memory
+__global__ void fused_dense_relu(const float* x, const float* W, const float* b,
+                                 float* out, int M, int K, int N) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < M && col < N) {
+        float acc = 0.0f;
+        for (int k = 0; k < K; k++)
+            acc += x[row*K + k] * W[k*N + col];
+        out[row*N + col] = fmaxf(acc + b[col], 0.0f);   // fused bias + ReLU
     }
-    // Store result with ReLU activation
-    output[threadIdx] = max(0.0f, acc + b1[threadIdx]);
 }
+// A real compiler would also tile through shared memory and use Tensor Core (WMMA/MMA) instructions.
 ```
 
 ---
 
-```c
-// Apple GPU (Metal) - Optimized Shader
-kernel void fused_shader(
-    texture2d_array<half, access::read> input [[texture(0)]],
-    texture2d_array<half, access::read> weights [[texture(1)]],
-    device half* bias [[buffer(0)]],
-    texture2d_array<half, access::write> output [[texture(2)]],
-    uint3 gid [[thread_position_in_grid]]
-) {
-    // Use Apple Neural Engine capabilities
-    half4 acc = 0;
-    for (int k = 0; k < K; k++) {
-        half4 a = input.read(gid.xy, k);
-        half4 b = weights.read(uint2(k, gid.z), 0);
-        acc += a * b;
-    }
-    // Fused activation and bias
-    acc = max(acc + bias[gid.z], 0.0h);
-    output.write(acc, gid.xy, gid.z);
+```metal
+// Apple GPU (Metal): the same fused computation
+kernel void fused_dense_relu(device const half* x [[buffer(0)]],
+                             device const half* W [[buffer(1)]],
+                             device const half* b [[buffer(2)]],
+                             device half* out     [[buffer(3)]],
+                             constant uint& K     [[buffer(4)]],
+                             constant uint& N     [[buffer(5)]],
+                             uint2 gid [[thread_position_in_grid]]) {   // gid = (col, row)
+    half acc = 0.0h;
+    for (uint k = 0; k < K; k++)
+        acc += x[gid.y*K + k] * W[k*N + gid.x];
+    out[gid.y*N + gid.x] = max(acc + b[gid.x], 0.0h);
 }
 ```
+*Same graph, same fusion, different target syntax (a real compiler also picks tile sizes, vector widths and precision per device).*
 
 ---
 
 
 ## Why This Matters for You
 **Transferable Concepts You Already Know:**
-Traditional Compiler Concepts → AI Compiler Applications
->
-    "Lexical Analysis": "Parse model definition into tokens",
-    "Parsing": "Build computational graph from operations",
-    "Type Checking": "Verify tensor shapes and dtypes",
-    "Control Flow Analysis": "Analyze branching in dynamic models",
-    "Dataflow Analysis": "Optimize tensor memory usage",
-    "Intermediate Representations": "Computational graphs as IR",
-    "Optimization Passes": "Graph transformations (fusion, etc.)",
-    "Code Generation": "Hardware-specific kernel generation",
-    "Register Allocation": "Tensor memory allocation strategies"
+| Traditional compiler concept | In an AI compiler |
+|------------------------------|-------------------|
+| Lexing and parsing | Capture the model as a computational graph (tracing, graph capture) |
+| Type checking | Verify tensor shapes and dtypes (shape inference) |
+| Control-flow analysis | Handle branching and loops in dynamic models |
+| Dataflow / liveness analysis | Decide when a tensor buffer can be freed or reused |
+| Intermediate representations | Graph IR (Relax, StableHLO, FX) and loop-level IR (TensorIR, Linalg) |
+| Optimization passes | Operator fusion, constant folding, layout transformation |
+| Instruction selection | Choose the kernel or Tensor Core instruction for each operation |
+| Register allocation | Allocation of tensors to registers, shared memory and global memory |
+| Code generation | Emit CUDA/PTX, Metal, LLVM IR, ... |
 
 ---
 
@@ -1515,10 +1524,10 @@ Traditional Compiler Concepts → AI Compiler Applications
 
 ---
 
-**Current Trends (2024-2025):**
-1. **Unified Compilation**: Single model → CPU/GPU/TPU/FPGA
-2. **Automatic Optimization**: AI that compiles AI models
-3. **Privacy-Preserving Compilation**: Secure ML on untrusted hardware
+**Current Trends:**
+1. **Unified Compilation**: Single model → CPU/GPU/TPU/NPU
+2. **Automatic Optimization**: Learned cost models and auto-tuning
+3. **Framework-Integrated Compilers**: `torch.compile`, `jax.jit`
 4. **Sustainable AI**: Energy-aware compilation techniques
 
 
@@ -1535,12 +1544,14 @@ Traditional Compiler Concepts → AI Compiler Applications
    - Understand how GPUs accelerate these operations
 
 2. **Hands-On Compilers**:
-   - Try TVM tutorial: Compile a small neural network
-   - Experiment with different optimization levels
+   - Try the Apache TVM tutorials: compile a small neural network
+   - Try `torch.compile` and inspect the generated code (`TORCH_LOGS=output_code`)
+   - Compare latency before and after, and with different optimization settings
 
 3. **Dive Deeper**:
    - Read about MLIR and its dialect system
    - Explore how TensorRT optimizes models
+   - Read about Triton, a Python-embedded language for GPU kernels
    - Study polyhedral compilation for loop optimizations
 
 ---
@@ -1548,10 +1559,7 @@ Traditional Compiler Concepts → AI Compiler Applications
 ### From Here to AI Compiler Expert
 
 **Level 1: Foundation** 
-1. Master tensor operations
-import numpy as np
-import torch
-import jax.numpy as jnp
+1. Master tensor operations (NumPy, PyTorch, `jax.numpy`)
 
 2. Understand GPU basics
    - CUDA programming model
@@ -1569,46 +1577,43 @@ import jax.numpy as jnp
    - Lexing, parsing, IR, optimizations, codegen
 
 2. Explore AI compiler tools
-   - TVM: pip install apache-tvm
+   - Apache TVM: https://tvm.apache.org/ (see its install guide)
    - MLIR: https://mlir.llvm.org/
-   - ONNX Runtime: pip install onnxruntime
+   - ONNX Runtime: `pip install onnxruntime`
 
-3. Simple project: Optimize a small model
+3. Try it: compile a small model and measure what the compiler changed
 
 ---
 
 **Level 3: Advanced Topics** 
 
- 1. Kernel optimization
-    - Polyhedral compilation
+1. Kernel optimization
+   - Polyhedral compilation
    - Auto-tuning
-    - Memory access patterns
-  
----
+   - Memory access patterns
 
- 1. Hardware-specific optimization
-    - GPU (CUDA, ROCm, Metal)
+2. Hardware-specific optimization
+   - GPU (CUDA, ROCm, Metal)
    - TPU (XLA optimizations)
-    - Edge devices (TensorFlow Lite)
+   - Edge devices (LiteRT, Core ML)
 
+3. Write a toy AI compiler
+   - Graph IR implementation
+   - Optimization passes
+   - Code generation for a simple target
 
----
-
-
-3. Build a simple AI compiler
-    - Graph IR implementation
-    - Optimization passes
-    - Code generation for a simple target
-  
 ---
 
 
 **Level 4: Specialization**
-> "Performance": "Extreme optimization for specific hardware",
-    "Correctness": "Formal verification of AI compilers",
-    "Productivity": "Better developer tools and debuggers",
-    "Accessibility": "Compilers for novel hardware (quantum, optical)",
-    "Sustainability": "Energy-efficient compilation techniques"
+
+| Direction | Focus |
+|-----------|-------|
+| Performance | Extreme optimization for specific hardware |
+| Correctness | Verification and testing of AI compilers |
+| Productivity | Better developer tools and debuggers |
+| Accessibility | Compilers for novel hardware |
+| Sustainability | Energy-efficient compilation techniques |
 
 
 ---
