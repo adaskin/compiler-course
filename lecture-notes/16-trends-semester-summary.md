@@ -12,7 +12,10 @@
   - [**Domain-Specific Language Compilers**](#domain-specific-language-compilers)
     - [**SQL Compiler Example**](#sql-compiler-example)
     - [**Halide: Image Processing DSL**](#halide-image-processing-dsl)
+  - [**Declarative Languages: Say What, Not How**](#declarative-languages-say-what-not-how)
   - [**ML for Compiler Optimization: AI-Assisted Compilation**](#ml-for-compiler-optimization-ai-assisted-compilation)
+  - [**LLMs and Compilers**](#llms-and-compilers)
+  - [**Other Recent Trends Driven by LLMs**](#other-recent-trends-driven-by-llms)
   - [**Compiler Engineering Industry Roles**](#compiler-engineering-industry-roles)
   - [**Open Research Problems: Current Challenges**](#open-research-problems-current-challenges)
   - [**Applications of Compiler Contents Beyond Programming Languages**](#applications-of-compiler-contents-beyond-programming-languages)
@@ -28,30 +31,28 @@
     - [**What We've Covered**](#what-weve-covered)
     - [**Why It Matters**](#why-it-matters)
   - [**Resources**](#resources)
-  - [**Project Presentations**](#project-presentations)
-    - [**What to Prepare**](#what-to-prepare)
 
 ---
 
 ## **Industry Compiler Designs**
 
 **GCC (GNU Compiler Collection):**  
-- Monolithic design, 40+ years of development  
+- Traditionally monolithic design, developed since 1987  
 - GIMPLE (high-level IR) → RTL (low-level IR)  
 - **Pro:** Excellent compatibility, many targets  
-- **Con:** Hard to extend, complex codebase  
+- **Con:** Harder to reuse as a library; complex codebase  
 
 **Clang/LLVM:**  
 - Modular, library-based architecture  
 - LLVM IR as universal middle layer  
 - **Pro:** Easy to extend, active development  
-- **Con:** Larger memory footprint  
+- **Con:** Fewer legacy targets than GCC; internal APIs change between releases  
 
 **Roslyn (.NET Compiler):**  
 - Compiler-as-a-service model  
 - Rich API for tooling, incremental compilation  
 - **Pro:** Great IDE integration  
-- **Con:** Microsoft ecosystem only  
+- **Con:** Mainly for the .NET languages (C#, Visual Basic)  
 
 ---
 
@@ -93,17 +94,17 @@
 
 ## **Modern Language Features Implementation: Compiling Async/Await**
 
-**Source:** `async function fetch() { await data(); }`
+**Source:** `async function load() { await getData(); }`
 
 **Compiled to:** State machine with switch/case
 ```javascript
 // Simplified transformation
-function fetch() {
+function load() {
   let state = 0;
   return new Promise((resolve) => {
     function step() {
       switch(state) {
-        case 0: state = 1; return data().then(step);
+        case 0: state = 1; return getData().then(step);
         case 1: resolve();
       }
     }
@@ -123,22 +124,22 @@ function fetch() {
 ## **Compiler Security Features: Protecting Against Attacks**
 
 **Control-Flow Integrity (CFI):**
-- Validate function pointers before calls
-- Prevents return-oriented programming (ROP) attacks
+- Check that an indirect call (function pointer, virtual call) goes to a function of the expected type
+- Protects the forward edges of the control-flow graph; return addresses are protected separately (shadow stacks, return-address signing) against return-oriented programming (ROP)
 
-**Runtime Protections:**
-- **Stack Canaries:** Detect buffer overflows
-- **ASLR:** Randomize memory layout
-- **DEP:** Prevent code execution from data areas
+**Compiler-Supported Protections:**
+- **Stack Canaries:** Detect stack buffer overflows (`-fstack-protector`)
+- **ASLR:** OS randomizes memory layout; the compiler emits position-independent code (PIE)
+- **DEP / NX:** Hardware and OS mark data pages non-executable
 
-**Example:** `clang -fsanitize=cfi program.c`
+**Example:** `clang -flto -fvisibility=hidden -fsanitize=cfi program.c` (Clang's CFI needs LTO)
 
 ---
 
 ## **WebAssembly Compilation: Compiling for the Web**
 
 **Pipeline:**
-C/Rust/Go → LLVM IR → WASM Binary → Browser Runtime
+C/C++/Rust → LLVM IR → WASM Binary → Browser Runtime (other languages such as Go use their own WASM backends)
 
 **WASM Features:**
 - Linear memory model
@@ -181,7 +182,25 @@ SELECT name FROM users WHERE age > 18;
 ### **Halide: Image Processing DSL**
 - **Algorithm:** What to compute
 - **Schedule:** How to compute it (parallel, vectorized, tiled)
-- **Example:** `blur.tile(x, y, 32, 32).vectorize(x, 8).parallel(y)`
+- **Example:** `blur.tile(x, y, xi, yi, 32, 32).vectorize(xi, 8).parallel(y)`
+
+---
+
+## **Declarative Languages: Say What, Not How**
+
+**Idea:** the programmer states *what* result is wanted; the compiler chooses *how* to compute it.
+
+| Language | You write | The compiler/optimizer chooses |
+|----------|-----------|--------------------------------|
+| **SQL** | `SELECT ... WHERE ...` | Join order, indexes, parallelism (query plan) |
+| **Datalog** (Soufflé, CodeQL) | Logic rules, e.g. `reach(x,z) :- reach(x,y), edge(y,z).` | Evaluation order, indexes, data structures |
+| **Halide / TVM / Triton** | The algorithm (and optionally a schedule) | Tiling, vectorization, parallelism |
+| **Build files, infrastructure as code** | The desired end state | The order of steps to reach it |
+
+**Why it matters:**
+- Declarative programs are easier to analyze, so the compiler is free to rewrite them (same idea as the optimization lectures)
+- Program analyses (like the dataflow analyses we wrote) can be written as a few Datalog rules
+- This is also why declarative programs are a good target for LLMs: the spec is short and the result can be checked
 
 ---
 
@@ -191,11 +210,52 @@ SELECT name FROM users WHERE age > 18;
 1. **Auto-tuning:** ML predicts optimal compiler flags
 2. **Neural program synthesis:** Generate code from specs
 3. **Bug finding:** ML-powered static analysis
-4. **PGO 2.0:** ML models predict hot paths
+4. **Learned heuristics:** ML models make inlining and register-allocation decisions (e.g. LLVM's MLGO)
 
-**Example:** AutoTVM uses ML to search for optimal tensor operation schedules
+**Example:** TVM's MetaSchedule (successor of AutoTVM) uses ML to search for fast tensor operation schedules
+
+**MLGO (Google, in LLVM):** ML-guided heuristics for *inlining for size* and *register allocation* (greedy eviction). The model replaces a hand-written heuristic; the compiler stays in control and the generated code stays correct.
 
 **Research:** Using reinforcement learning for compiler heuristics
+
+---
+
+## **LLMs and Compilers**
+
+**1. LLMs as compiler tools**
+- **Meta LLM Compiler (2024):** Code Llama further trained on 546B tokens of LLVM IR and assembly; 7B and 13B models
+  - Tasks: optimize code size, and disassemble x86-64/ARM assembly back to LLVM IR
+  - Reported: about 77% of the gain of an autotuning search for code size
+- **LLM-written GPU kernels:** KernelBench (250 PyTorch workloads) found that frontier models often write *correct* kernels but match the PyTorch baseline speed in under 20% of cases (as of the 2025 paper)
+- **AlphaEvolve (Google DeepMind, 2025):** Gemini models propose program changes, automated evaluators score them; it found a 4×4 complex matrix multiplication with 48 scalar multiplications and sped up a Gemini training kernel by 23%
+
+---
+
+**2. Compilers as the check on LLM output**
+- An LLM can produce plausible code that is wrong; **the compiler and tests decide**
+  - Type checker and borrow checker reject invalid code (for example in LLM-assisted C-to-Rust translation)
+  - Sanitizers, fuzzers and test suites catch the rest
+- The loop "generate → compile → run tests → feed errors back" is the standard way coding agents work
+- **Grammar-constrained decoding:** the model may only emit tokens that keep the output valid under a grammar (e.g. llama.cpp GBNF grammars, JSON-schema modes). This is the lexer and parser material from the first weeks of the course, applied while the model generates text.
+
+---
+
+**3. Compilers for LLMs**
+- Inference cost dominates, so the AI compiler stack from lecture 15 matters more than ever
+- Typical techniques: operator fusion (fused attention kernels such as FlashAttention), quantization (FP8, INT8, INT4), memory-layout optimization, specialized kernels (Triton, CUDA)
+- New languages and tools target this: Triton (Python-embedded GPU kernels), Mojo (Python-like language built on MLIR)
+
+**Takeaway:** LLMs generate candidates, compilers supply correctness and speed. The more code is generated, the more valuable a trustworthy compiler becomes.
+
+---
+
+## **Other Recent Trends Driven by LLMs**
+
+1. **Hardware co-design:** accelerators are built around matrix multiplication and low precision (tensor cores, TPUs, NPUs); compilers must target all of them
+2. **Low-precision arithmetic:** FP16/BF16 → FP8 → INT4; the compiler handles scaling and conversions
+3. **Declarative LLM programs:** frameworks such as DSPy let you declare a task and metric; an optimizer (compiler-like) searches for the prompts
+4. **Verified and testable generation:** formal verification languages and test generation are used to check LLM-written code
+5. **Open question:** how do we *trust* generated code and *debug* generated kernels? Compiler techniques (types, analysis, verification) are the main tools
 
 ---
 
@@ -224,6 +284,7 @@ SELECT name FROM users WHERE age > 18;
 3. **Energy-Efficient Compilation:** Optimize for battery life
 4. **Interactive Compilation:** Real-time optimization feedback
 5. **Approximate Computing:** Trade accuracy for performance
+6. **Trustworthy generated code:** Checking and debugging code written by LLMs
 
 **Example:** Automatic partitioning of neural networks across CPU/GPU
 
@@ -316,8 +377,8 @@ GLSL/HLSL Shader → Parse → Optimize → GPU Assembly → Register Allocation
 **Database Query Optimization:**
 ```sql
 -- Original: SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers)
--- Optimized: JOIN with predicate pushdown
--- Techniques: Common subexpression elimination, dead code elimination
+-- Optimized: rewrite the subquery as a semi-join, push filters down, pick a join order
+-- Same ideas as compiler optimization: rewrite rules guided by a cost model
 ```
 
 **Network Protocol Optimization:**
@@ -344,7 +405,8 @@ interface UserForm {
   email: `${string}@${string}.${string}`;
   age: number & { __brand: "PositiveNumber" };
 }
-// Compile-time and runtime type checking
+// TypeScript checks these types at compile time only (types are erased);
+// runtime validation needs a library (e.g. zod) that generates checking code from the types
 ```
 
 **API Contracts:**
@@ -418,10 +480,11 @@ void vulnerable(char *input) {
 ### **What We've Covered**
 
 1. **Frontend:** Lexing, parsing, semantic analysis
-2. **Middle-end:** IR, optimizations, dataflow analysis
-3. **Backend:** Code generation, runtime systems
-4. **Modern Topics:** AI compilers, WebAssembly, quantum
-5. **Applications:** Security, databases, networking, graphics
+2. **Middle-end:** IR, local and global optimization, dataflow analysis
+3. **Backend:** Runtime environment, code generation, register allocation
+4. **Memory Management:** Automatic memory management (garbage collection)
+5. **Modern Topics:** AI compilers, declarative languages, LLMs and compilers, WebAssembly, quantum, security
+6. **Applications:** Databases, networking, graphics, security tools
 
 ### **Why It Matters**
 
@@ -436,41 +499,21 @@ void vulnerable(char *input) {
 ## **Resources**
 
 
-**Online Courses:**
-- "Advanced Compilers" (Hal Finkel)
-- "Compilers" (Alex Aiken, Stanford on YouTube)
-- "Optimizing Compilers" (Keith Cooper, Rice)
+**Online Courses and Tutorials:**
+- "Compilers" (Alex Aiken, Stanford)
+- LLVM "Kaleidoscope" tutorial (build a language with LLVM)
+- *Crafting Interpreters* (Robert Nystrom, free online)
+- Compiler Explorer (godbolt.org): see the assembly your code compiles to
 
 **Books:**
 - "Engineering a Compiler" (Cooper & Torczon)
-- "Advanced Compiler Design" (Muchnick)
+- "Advanced Compiler Design and Implementation" (Muchnick)
 - "The Garbage Collection Handbook" (Jones et al.)
 
 **Open Source Projects:**
 - LLVM/Clang, GCC, TVM, V8, Roslyn
 
 **Conferences:**
-- PLDI, CGO, LLVM Developers Meeting
+- PLDI, CGO, CC, LLVM Developers' Meeting
 
-**Community:** CompilerDev Discord, #llvm on IRC
-
----
-
-## **Project Presentations**
-
-### **What to Prepare**
-
-**15-Minute Presentation Structure:**
-1. **Problem:** What does your compiler do?
-2. **Architecture:** Key design decisions
-3. **Challenges:** Technical difficulties overcome
-4. **Results:** Demo of working compiler
-5. **Learnings:** What you gained from the project
-
-**Evaluation Criteria:**
-- Correctness and completeness
-- Code quality and organization
-- Optimization effectiveness
-- Presentation clarity
-
-**Good luck with your final projects!**
+**Community:** LLVM Discourse (discourse.llvm.org), LLVM Discord
