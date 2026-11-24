@@ -12,7 +12,10 @@
   - [**Domain-Specific Language Compilers**](#domain-specific-language-compilers)
     - [**SQL Compiler Example**](#sql-compiler-example)
     - [**Halide: Image Processing DSL**](#halide-image-processing-dsl)
+  - [**Declarative Languages: Say What, Not How**](#declarative-languages-say-what-not-how)
   - [**ML for Compiler Optimization: AI-Assisted Compilation**](#ml-for-compiler-optimization-ai-assisted-compilation)
+  - [**LLMs and Compilers**](#llms-and-compilers)
+  - [**Other Recent Trends Driven by LLMs**](#other-recent-trends-driven-by-llms)
   - [**Compiler Engineering Industry Roles**](#compiler-engineering-industry-roles)
   - [**Open Research Problems: Current Challenges**](#open-research-problems-current-challenges)
   - [**Applications of Compiler Contents Beyond Programming Languages**](#applications-of-compiler-contents-beyond-programming-languages)
@@ -183,6 +186,24 @@ SELECT name FROM users WHERE age > 18;
 
 ---
 
+## **Declarative Languages: Say What, Not How**
+
+**Idea:** the programmer states *what* result is wanted; the compiler chooses *how* to compute it.
+
+| Language | You write | The compiler/optimizer chooses |
+|----------|-----------|--------------------------------|
+| **SQL** | `SELECT ... WHERE ...` | Join order, indexes, parallelism (query plan) |
+| **Datalog** (Soufflé, CodeQL) | Logic rules, e.g. `reach(x,z) :- reach(x,y), edge(y,z).` | Evaluation order, indexes, data structures |
+| **Halide / TVM / Triton** | The algorithm (and optionally a schedule) | Tiling, vectorization, parallelism |
+| **Build files, infrastructure as code** | The desired end state | The order of steps to reach it |
+
+**Why it matters:**
+- Declarative programs are easier to analyze, so the compiler is free to rewrite them (same idea as the optimization lectures)
+- Program analyses (like the dataflow analyses we wrote) can be written as a few Datalog rules
+- This is also why declarative programs are a good target for LLMs: the spec is short and the result can be checked
+
+---
+
 ## **ML for Compiler Optimization: AI-Assisted Compilation**
 
 **Applications:**
@@ -193,7 +214,48 @@ SELECT name FROM users WHERE age > 18;
 
 **Example:** TVM's MetaSchedule (successor of AutoTVM) uses ML to search for fast tensor operation schedules
 
+**MLGO (Google, in LLVM):** ML-guided heuristics for *inlining for size* and *register allocation* (greedy eviction). The model replaces a hand-written heuristic; the compiler stays in control and the generated code stays correct.
+
 **Research:** Using reinforcement learning for compiler heuristics
+
+---
+
+## **LLMs and Compilers**
+
+**1. LLMs as compiler tools**
+- **Meta LLM Compiler (2024):** Code Llama further trained on 546B tokens of LLVM IR and assembly; 7B and 13B models
+  - Tasks: optimize code size, and disassemble x86-64/ARM assembly back to LLVM IR
+  - Reported: about 77% of the gain of an autotuning search for code size
+- **LLM-written GPU kernels:** KernelBench (250 PyTorch workloads) found that frontier models often write *correct* kernels but match the PyTorch baseline speed in under 20% of cases (as of the 2025 paper)
+- **AlphaEvolve (Google DeepMind, 2025):** Gemini models propose program changes, automated evaluators score them; it found a 4×4 complex matrix multiplication with 48 scalar multiplications and sped up a Gemini training kernel by 23%
+
+---
+
+**2. Compilers as the check on LLM output**
+- An LLM can produce plausible code that is wrong; **the compiler and tests decide**
+  - Type checker and borrow checker reject invalid code (for example in LLM-assisted C-to-Rust translation)
+  - Sanitizers, fuzzers and test suites catch the rest
+- The loop "generate → compile → run tests → feed errors back" is the standard way coding agents work
+- **Grammar-constrained decoding:** the model may only emit tokens that keep the output valid under a grammar (e.g. llama.cpp GBNF grammars, JSON-schema modes). This is the lexer and parser material from the first weeks of the course, applied while the model generates text.
+
+---
+
+**3. Compilers for LLMs**
+- Inference cost dominates, so the AI compiler stack from lecture 15 matters more than ever
+- Typical techniques: operator fusion (fused attention kernels such as FlashAttention), quantization (FP8, INT8, INT4), memory-layout optimization, specialized kernels (Triton, CUDA)
+- New languages and tools target this: Triton (Python-embedded GPU kernels), Mojo (Python-like language built on MLIR)
+
+**Takeaway:** LLMs generate candidates, compilers supply correctness and speed. The more code is generated, the more valuable a trustworthy compiler becomes.
+
+---
+
+## **Other Recent Trends Driven by LLMs**
+
+1. **Hardware co-design:** accelerators are built around matrix multiplication and low precision (tensor cores, TPUs, NPUs); compilers must target all of them
+2. **Low-precision arithmetic:** FP16/BF16 → FP8 → INT4; the compiler handles scaling and conversions
+3. **Declarative LLM programs:** frameworks such as DSPy let you declare a task and metric; an optimizer (compiler-like) searches for the prompts
+4. **Verified and testable generation:** formal verification languages and test generation are used to check LLM-written code
+5. **Open question:** how do we *trust* generated code and *debug* generated kernels? Compiler techniques (types, analysis, verification) are the main tools
 
 ---
 
@@ -222,6 +284,7 @@ SELECT name FROM users WHERE age > 18;
 3. **Energy-Efficient Compilation:** Optimize for battery life
 4. **Interactive Compilation:** Real-time optimization feedback
 5. **Approximate Computing:** Trade accuracy for performance
+6. **Trustworthy generated code:** Checking and debugging code written by LLMs
 
 **Example:** Automatic partitioning of neural networks across CPU/GPU
 
@@ -420,7 +483,7 @@ void vulnerable(char *input) {
 2. **Middle-end:** IR, local and global optimization, dataflow analysis
 3. **Backend:** Runtime environment, code generation, register allocation
 4. **Memory Management:** Automatic memory management (garbage collection)
-5. **Modern Topics:** AI compilers, WebAssembly, quantum, security
+5. **Modern Topics:** AI compilers, declarative languages, LLMs and compilers, WebAssembly, quantum, security
 6. **Applications:** Databases, networking, graphics, security tools
 
 ### **Why It Matters**
